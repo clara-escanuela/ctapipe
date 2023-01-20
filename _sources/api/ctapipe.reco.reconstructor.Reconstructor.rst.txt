@@ -1,0 +1,17 @@
+Reconstructor
+=============
+
+.. currentmodule:: ctapipe.reco.reconstructor
+
+.. autoclass:: Reconstructor
+   :show-inheritance:
+
+   .. rubric:: Methods Summary
+
+   .. autosummary::
+
+      ~Reconstructor.__call__
+
+   .. rubric:: Methods Documentation
+
+   .. automethod:: __call__

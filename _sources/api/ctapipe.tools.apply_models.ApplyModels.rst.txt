@@ -1,0 +1,55 @@
+ApplyModels
+===========
+
+.. currentmodule:: ctapipe.tools.apply_models
+
+.. autoclass:: ApplyModels
+   :show-inheritance:
+
+   .. rubric:: Attributes Summary
+
+   .. autosummary::
+
+      ~ApplyModels.aliases
+      ~ApplyModels.chunk_size
+      ~ApplyModels.classes
+      ~ApplyModels.description
+      ~ApplyModels.disp_reconstructor_path
+      ~ApplyModels.energy_regressor_path
+      ~ApplyModels.examples
+      ~ApplyModels.flags
+      ~ApplyModels.input_url
+      ~ApplyModels.name
+      ~ApplyModels.output_path
+      ~ApplyModels.overwrite
+      ~ApplyModels.particle_classifier_path
+
+   .. rubric:: Methods Summary
+
+   .. autosummary::
+
+      ~ApplyModels.finish
+      ~ApplyModels.setup
+      ~ApplyModels.start
+
+   .. rubric:: Attributes Documentation
+
+   .. autoattribute:: aliases
+   .. autoattribute:: chunk_size
+   .. autoattribute:: classes
+   .. autoattribute:: description
+   .. autoattribute:: disp_reconstructor_path
+   .. autoattribute:: energy_regressor_path
+   .. autoattribute:: examples
+   .. autoattribute:: flags
+   .. autoattribute:: input_url
+   .. autoattribute:: name
+   .. autoattribute:: output_path
+   .. autoattribute:: overwrite
+   .. autoattribute:: particle_classifier_path
+
+   .. rubric:: Methods Documentation
+
+   .. automethod:: finish
+   .. automethod:: setup
+   .. automethod:: start
