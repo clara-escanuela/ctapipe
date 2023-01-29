@@ -295,7 +295,6 @@ def chi_squared(image, prediction, pedestal, error_factor=2.9):
     float
     """
 
-    chi_square = (image - prediction) ** 2 / (pedestal + 0.5 * (image - prediction))
-    chi_square *= 1.0 / error_factor
+    chi_square = (image - prediction) ** 2 / (pedestal + error_factor**2*prediction)
 
     return np.sum(chi_square)
