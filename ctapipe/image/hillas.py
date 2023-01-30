@@ -216,7 +216,8 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
         )
 
     else:
-        n = 2
+        
+        n = 3
         m = cleaned_mask.copy()
         for ii in range(n):
             m = dilate(geometry, m)
@@ -227,15 +228,17 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
         cleaned_image[~mask] = 0.0
         cleaned_image[cleaned_image<0] = 0.0
 
-
         def fit(z, xi, yi, image, pedestal_variance, amplitude, emf=1.585):
+            delta_x = (xi - z[0])
+            delta_y = (yi - z[1])
 
-            long, trans = camera_to_shower_coordinates(xi, yi, z[0], z[1], z[2])
+            longitudinal = delta_x * np.cos(z[2]) + delta_y * np.sin(z[2])
+            transverse = delta_x * np.sin(z[2]) - delta_y * np.cos(z[2])
 
-            x = (long/z[3])**2
-            y = (trans/z[4])**2
+            x = (longitudinal/z[3])**2
+            y = (transverse/z[4])**2
 
-            prediction = (amplitude/2*np.pi*(z[3]*z[4]))*np.exp(-(1/2)*(x + y))
+            prediction = (1/(2*np.pi*z[3]*z[4]))*np.exp(-(1/2)*(x + y))
 
             chi_square = chi_squared(cleaned_image, prediction, pedestal_variance, emf)
 
@@ -243,9 +246,9 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
 
         x0 = [cog_x, cog_y, psi, length, width]
 
-        bnds = ((-1.2, 1.2), (-1.2, 1.2), (-1.6, 1.6), (0, 1), (0, 1))
+        bnds = ((-1.2, 1.2), (-1.2, 1.2), (-1.572, 1.572), (0, 2), (0, 2))
 
-        result = opt.minimize(fit, x0=x0, args=(geometry.pix_x.value, geometry.pix_y.value, cleaned_image, pedestal_variance, size), method='SLSQP', bounds=bnds)
+        result = opt.minimize(fit, x0=x0, args=(geometry.pix_x.value, geometry.pix_y.value, cleaned_image/np.sum(cleaned_image), pedestal_variance, size), method='Nelder-Mead', bounds=bnds)
         results = result.x
 
         fit_xcog = results[0]
@@ -256,6 +259,15 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
 
         fit_rcog = np.linalg.norm([fit_xcog, fit_ycog])
         fit_phi = np.arctan2(fit_ycog, fit_xcog)
+
+        if fit_length <= 0 or fit_width <= 0:
+            fit_xcog = cog_x
+            fit_ycog = cog_y
+            fit_rcog = cog_r
+            fit_phi = cog_phi
+            fit_length = length
+            fit_width = width
+            fit_psi = psi
 
         delta_x = geometry.pix_x.value - fit_xcog
         delta_y = geometry.pix_y.value - fit_ycog
@@ -285,16 +297,16 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
         else:
             length_uncertainty = np.sqrt(
                 np.sum(((((a * A) + (b * B) + (c * C))) ** 2.0) * cleaned_image)
-             ) / (2 * fit_length)
+            ) / (2 * fit_length)
 
         if fit_width == 0:
             width_uncertainty = np.nan
         else:
             width_uncertainty = np.sqrt(
                 np.sum(((((b * A) + (a * B) + (-c * C))) ** 2.0) * cleaned_image)
-                 ) / (2 * fit_width)
-
-
+                    ) / (2 * fit_width)
+       
+        size = np.sum(cleaned_image)
         if unit.is_equivalent(u.m):
             return CameraHillasParametersContainer(
                 x=u.Quantity(fit_xcog, unit),
@@ -309,7 +321,7 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
                 psi=Angle(fit_psi, unit=u.rad),
                 skewness=skewness_long,
                 kurtosis=kurtosis_long,
-            )
+                )
         return HillasParametersContainer(
             fov_lon=u.Quantity(fit_xcog, unit),
             fov_lat=u.Quantity(fit_ycog, unit),
@@ -323,5 +335,5 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
             psi=Angle(fit_psi, unit=u.rad),
             skewness=skewness_long,
             kurtosis=kurtosis_long,
-        )
+            )
 

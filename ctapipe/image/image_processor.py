@@ -124,6 +124,7 @@ class ImageProcessor(TelescopeComponent):
         tel_id,
         image,
         signal_pixels,
+        waveform,
         peak_time=None,
         default=DEFAULT_IMAGE_PARAMETERS,
     ) -> ImageParametersContainer:
@@ -164,7 +165,7 @@ class ImageProcessor(TelescopeComponent):
         if all(image_criteria):
             geom_selected = geometry[signal_pixels]
 
-            hillas = hillas_parameters(geom=geom_selected, image=image_selected)
+            hillas = hillas_parameters(geometry=geometry, dl1_image=image, cleaned_mask=signal_pixels, pedestal_variance=waveform[0][..., 1:5].std(axis=-1)**2)     #np.array([100]*len(image)))
             leakage = leakage_parameters(
                 geom=geometry, image=image, cleaning_mask=signal_pixels
             )
@@ -228,6 +229,7 @@ class ImageProcessor(TelescopeComponent):
                 tel_id=tel_id,
                 image=dl1_camera.image,
                 signal_pixels=dl1_camera.image_mask,
+                waveform=event.r0.tel[tel_id].waveform,
                 peak_time=dl1_camera.peak_time,
                 default=self.default_image_container,
             )
@@ -244,6 +246,7 @@ class ImageProcessor(TelescopeComponent):
                     tel_id,
                     image=sim_camera.true_image,
                     signal_pixels=sim_camera.true_image > 0,
+                    waveform=event.r0.tel[tel_id].waveform,
                     peak_time=None,  # true image from simulation has no peak time
                     default=DEFAULT_TRUE_IMAGE_PARAMETERS,
                 )

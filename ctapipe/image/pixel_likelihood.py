@@ -275,7 +275,7 @@ def mean_poisson_likelihood_full(prediction, spe_width, ped):
     return mean_like
 
 
-def chi_squared(image, prediction, pedestal, error_factor=2.9):
+def chi_squared(image, prediction, pedestal, error_factor=1.58):
     """
     Simple chi-squared statistic from Le Bohec et al 2008
 
