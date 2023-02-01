@@ -226,6 +226,10 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
     cleaned_image = dl1_image.copy()
     cleaned_image[~mask] = 0.0
     cleaned_image[cleaned_image<0] = 0.0
+    #cleaned_image = cleaned_image[mask]
+    #geometry = geometry[mask][cleaned_image>0]
+    #pedestal_variance = pedestal_variance[mask][cleaned_image>0]
+    #cleaned_image = cleaned_image[cleaned_image>0]
     size = np.sum(cleaned_image)
 
     def fit(z, xi, yi, image, pedestal_variance, emf=1.585):
@@ -246,7 +250,7 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
 
     x0 = [cog_x, cog_y, psi, length, width, np.max(cleaned_image)/(2*np.pi*cog_x*cog_y)]
 
-    bnds = ((-1.4, 1.4), (-1.4, 1.4), (-1.572, 1.572), (0, 5), (0, 5), (0, np.max(cleaned_image)))
+    bnds = ((-1.1, 1.1), (-1.1, 1.1), (-1.571, 1.571), (0, 1), (0, 0.5), (0, np.max(cleaned_image)))
 
     result = opt.minimize(fit, x0=x0, args=(geometry.pix_x.value, geometry.pix_y.value, cleaned_image, pedestal_variance), bounds=bnds)
     results = result.x
@@ -260,7 +264,7 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
     fit_rcog = np.linalg.norm([fit_xcog, fit_ycog])
     fit_phi = np.arctan2(fit_ycog, fit_xcog)
 
-    if fit_length <= 0 or fit_width <= 0 or fit_length>1 or fit_width>0.5:
+    if fit_length <= 0 or fit_width <= 0:
         fit_xcog = cog_x
         fit_ycog = cog_y
         fit_rcog = cog_r
