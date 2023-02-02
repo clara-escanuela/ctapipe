@@ -250,7 +250,7 @@ def hillas_parameters(geometry, dl1_image, cleaned_mask, pedestal_variance, gaus
 
     x0 = [cog_x, cog_y, psi, length, width, np.max(cleaned_image)/(2*np.pi*cog_x*cog_y)]
 
-    bnds = ((-1.4, 1.4), (-1.4, 1.4), (-1.572, 1.572), (0, 1), (0, 1), (0, np.max(cleaned_image)))
+    bnds = ((-1.4, 1.4), (-1.4, 1.4), (-np.pi, np.pi), (0, 1), (0, 1), (0, np.max(cleaned_image)))
 
     result = opt.minimize(fit, x0=x0, args=(geometry.pix_x.value, geometry.pix_y.value, cleaned_image, pedestal_variance), bounds=bnds)
     results = result.x
