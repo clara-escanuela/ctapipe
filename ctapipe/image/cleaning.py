@@ -13,6 +13,7 @@ image size and just set unclean pixels to 0 or similar, use
 """
 
 __all__ = [
+    "time_clustering",
     "tailcuts_clean",
     "dilate",
     "mars_cleaning_1st_pass",
@@ -22,11 +23,13 @@ __all__ = [
     "time_constrained_clean",
     "ImageCleaner",
     "TailcutsImageCleaner",
+    "ClusteringImageCleaner",
 ]
 
 from abc import abstractmethod
 
 import numpy as np
+from sklearn.cluster import DBSCAN
 
 from ..core import TelescopeComponent
 from ..core.traits import (
@@ -35,6 +38,29 @@ from ..core.traits import (
     IntTelescopeParameter,
 )
 from .morphology import brightest_island, number_of_islands
+
+
+def time_clustering(
+    geom, image, time, n_noise=1.0, NMin=5, dd=1, t_scale=4, d_scale=0.1
+):
+    precut_mask = image > n_noise
+
+    arr = np.zeros(len(image))
+    arr[~precut_mask] = -1
+
+    pix_x = geom.pix_x.value[precut_mask] / d_scale
+    pix_y = geom.pix_y.value[precut_mask] / d_scale
+
+    X = np.column_stack((time[precut_mask] / t_scale, pix_x, pix_y))
+    db = DBSCAN(eps=dd, min_samples=NMin).fit(X)
+    labels = db.labels_
+
+    # no_clusters = len(np.unique(labels))  # IMPORTANT!
+
+    arr[arr == 0][labels > -1] = -1
+    mask = arr == 0  # we keep these events
+
+    return mask
 
 
 def tailcuts_clean(
@@ -468,7 +494,7 @@ class ImageCleaner(TelescopeComponent):
 
     @abstractmethod
     def __call__(
-        self, tel_id: int, image: np.ndarray, arrival_times: np.ndarray = None
+        self, tel_id: int, image: np.ndarray, arrival_times: np.ndarray
     ) -> np.ndarray:
         """
         Identify pixels with signal, and reject those with pure noise.
@@ -529,6 +555,52 @@ class TailcutsImageCleaner(ImageCleaner):
             boundary_thresh=self.boundary_threshold_pe.tel[tel_id],
             min_number_picture_neighbors=self.min_picture_neighbors.tel[tel_id],
             keep_isolated_pixels=self.keep_isolated_pixels.tel[tel_id],
+        )
+
+
+class ClusteringImageCleaner(ImageCleaner):
+    """
+    Clean images using the standard picture/boundary technique. See
+    `ctapipe.image.tailcuts_clean`
+    """
+
+    n_noise = FloatTelescopeParameter(
+        default_value=1.0, help="initial cut in number of p.e."
+    ).tag(config=True)
+
+    NMin = IntTelescopeParameter(default_value=5, help="Minimum number").tag(
+        config=True
+    )
+
+    dd = FloatTelescopeParameter(
+        default_value=1.0,
+        help="Minimum number of neighbors above threshold to consider",
+    ).tag(config=True)
+    t_scale = FloatTelescopeParameter(
+        default_value=4.0,
+        help="Minimum number of neighbors above threshold to consider",
+    ).tag(config=True)
+    d_scale = FloatTelescopeParameter(
+        default_value=0.1,
+        help="Minimum number of neighbors above threshold to consider",
+    ).tag(config=True)
+
+    def __call__(
+        self, tel_id: int, image: np.ndarray, arrival_times: np.ndarray
+    ) -> np.ndarray:
+        """
+        Apply standard picture-boundary cleaning. See `ImageCleaner.__call__()`
+        """
+
+        return time_clustering(
+            self.subarray.tel[tel_id].camera.geometry,
+            image,
+            arrival_times,
+            n_noise=self.n_noise.tel[tel_id],
+            NMin=self.NMin.tel[tel_id],
+            dd=self.dd.tel[tel_id],
+            t_scale=self.t_scale.tel[tel_id],
+            d_scale=self.d_scale.tel[tel_id],
         )
 
 
