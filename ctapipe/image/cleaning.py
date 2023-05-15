@@ -41,7 +41,7 @@ from .morphology import brightest_island, number_of_islands
 
 
 def time_clustering(
-    geom, image, time, n_noise=1.0, NMin=5, dd=1, t_scale=4, d_scale=0.1
+    geom, image, time, n_noise=1.0, n_min=5.0, dd=1.0, t_scale=4.0, d_scale=0.1
 ):
     precut_mask = image > n_noise
 
@@ -52,7 +52,7 @@ def time_clustering(
     pix_y = geom.pix_y.value[precut_mask] / d_scale
 
     X = np.column_stack((time[precut_mask] / t_scale, pix_x, pix_y))
-    db = DBSCAN(eps=dd, min_samples=NMin).fit(X)
+    db = DBSCAN(eps=dd, min_samples=n_min).fit(X)
     labels = db.labels_
 
     # no_clusters = len(np.unique(labels))  # IMPORTANT!
@@ -568,7 +568,7 @@ class ClusteringImageCleaner(ImageCleaner):
         default_value=1.0, help="initial cut in number of p.e."
     ).tag(config=True)
 
-    NMin = IntTelescopeParameter(default_value=5, help="Minimum number").tag(
+    n_min = FloatTelescopeParameter(default_value=5.0, help="Minimum number").tag(
         config=True
     )
 
@@ -597,7 +597,7 @@ class ClusteringImageCleaner(ImageCleaner):
             image,
             arrival_times,
             n_noise=self.n_noise.tel[tel_id],
-            NMin=self.NMin.tel[tel_id],
+            n_min=self.n_min.tel[tel_id],
             dd=self.dd.tel[tel_id],
             t_scale=self.t_scale.tel[tel_id],
             d_scale=self.d_scale.tel[tel_id],

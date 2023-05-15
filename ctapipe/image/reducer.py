@@ -21,7 +21,7 @@ __all__ = [
     "DataVolumeReducer",
     "NullDataVolumeReducer",
     "TailCutsDataVolumeReducer",
-    "dvr_clustering",
+    "ClusteringDataVolumeReducer",
 ]
 
 
@@ -218,7 +218,7 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         return mask
 
 
-class dvr_clustering(DataVolumeReducer):
+class ClusteringDataVolumeReducer(DataVolumeReducer):
     image_extractor_type = TelescopeParameter(
         trait=ComponentName(ImageExtractor, default_value="NeighborPeakWindowSum"),
         default_value="NeighborPeakWindowSum",
