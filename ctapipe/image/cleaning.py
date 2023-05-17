@@ -41,8 +41,9 @@ from .morphology import brightest_island, number_of_islands
 
 
 def time_clustering(
-    geom, image, time, n_noise=1.0, n_min=5.0, dd=1.0, t_scale=4.0, d_scale=0.1
+    geom, image, time, n_noise=1.0, n_min=5, dd=1.0, t_scale=4.0, d_scale=0.1
 ):
+
     precut_mask = image > n_noise
 
     arr = np.zeros(len(image))
@@ -57,11 +58,10 @@ def time_clustering(
 
     # no_clusters = len(np.unique(labels))  # IMPORTANT!
 
-    arr[arr == 0][labels > -1] = -1
+    arr[arr == 0][labels == -1] = -1
     mask = arr == 0  # we keep these events
 
     return mask
-
 
 def tailcuts_clean(
     geom,
@@ -568,7 +568,7 @@ class ClusteringImageCleaner(ImageCleaner):
         default_value=1.0, help="initial cut in number of p.e."
     ).tag(config=True)
 
-    n_min = FloatTelescopeParameter(default_value=5.0, help="Minimum number").tag(
+    n_min = IntTelescopeParameter(default_value=5, help="Minimum number").tag(
         config=True
     )
 
