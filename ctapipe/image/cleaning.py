@@ -41,27 +41,30 @@ from .morphology import brightest_island, number_of_islands
 
 
 def time_clustering(
-    geom, image, time, n_noise=1.0, n_min=5, dd=1.0, t_scale=4.0, d_scale=0.1
+    geom, image, time, pedestal=1.0, n_noise=1.0, n_min=5, dd=1.0, t_scale=4.0, d_scale=0.1
 ):
-
-    precut_mask = image > n_noise
-
-    arr = np.zeros(len(image))
+    precut_mask = image > n_noise * pedestal
+    
+    arr = np.zeros(len(image), dtype=float)
     arr[~precut_mask] = -1
 
     pix_x = geom.pix_x.value[precut_mask] / d_scale
     pix_y = geom.pix_y.value[precut_mask] / d_scale
 
     X = np.column_stack((time[precut_mask] / t_scale, pix_x, pix_y))
-    db = DBSCAN(eps=dd, min_samples=n_min).fit(X)
-    labels = db.labels_
+    try:
+        db = DBSCAN(eps=dd, min_samples=n_min).fit(X)
+        labels = db.labels_
 
-    # no_clusters = len(np.unique(labels))  # IMPORTANT!
+        # no_clusters = len(np.unique(labels))-1  # IMPORTANT!
 
-    arr[arr == 0][labels == -1] = -1
-    mask = arr == 0  # we keep these events
-
-    return mask
+        y = np.array(arr[(arr == 0)])
+        y[(labels == -1)] = -1
+        arr[arr==0] = y
+        mask = arr == 0  # we keep these events
+        return mask
+    except:
+        ValueError
 
 def tailcuts_clean(
     geom,
@@ -567,11 +570,9 @@ class ClusteringImageCleaner(ImageCleaner):
     n_noise = FloatTelescopeParameter(
         default_value=1.0, help="initial cut in number of p.e."
     ).tag(config=True)
-
     n_min = IntTelescopeParameter(default_value=5, help="Minimum number").tag(
         config=True
     )
-
     dd = FloatTelescopeParameter(
         default_value=1.0,
         help="Minimum number of neighbors above threshold to consider",
@@ -583,6 +584,10 @@ class ClusteringImageCleaner(ImageCleaner):
     d_scale = FloatTelescopeParameter(
         default_value=0.1,
         help="Minimum number of neighbors above threshold to consider",
+    ).tag(config=True)
+    pedestal = FloatTelescopeParameter(
+        default_value=1.0,
+        help="Pedestal standard deviation",
     ).tag(config=True)
 
     def __call__(
@@ -596,6 +601,7 @@ class ClusteringImageCleaner(ImageCleaner):
             self.subarray.tel[tel_id].camera.geometry,
             image,
             arrival_times,
+            pedestal=self.pedestal.tel[tel_id],
             n_noise=self.n_noise.tel[tel_id],
             n_min=self.n_min.tel[tel_id],
             dd=self.dd.tel[tel_id],

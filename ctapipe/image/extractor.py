@@ -59,6 +59,7 @@ from .timing import timing_parameters
     nopython=True,
     cache=True,
 )
+
 def extract_around_peak(
     waveforms, peak_index, width, shift, sampling_rate_ghz, sum_, peak_time
 ):

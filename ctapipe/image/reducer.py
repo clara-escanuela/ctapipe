@@ -234,9 +234,6 @@ class ClusteringDataVolumeReducer(DataVolumeReducer):
         help="If set to 'False', the iteration steps in 2) are skipped and"
         "normal TailcutCleaning is used.",
     ).tag(config=True)
-    low_threshold = FloatTelescopeParameter(
-        default_value=4.5, help="Low signal threshold in p.e."
-    ).tag(config=True)
 
     def __init__(
         self,
@@ -291,20 +288,12 @@ class ClusteringDataVolumeReducer(DataVolumeReducer):
 
         # 1) Step: Clustering cleaning
         mask = self.cleaner(tel_id, dl1.image, dl1.peak_time)
-        pixels_above_boundary_thresh = dl1.image >= self.low_threshold.tel[tel_id]
-        mask_in_loop = np.array([])
-        # 2) Step: Add iteratively all pixels with Signal
-        #          S > boundary_thresh with ctapipe module
-        #          'dilate' until no new pixels were added.
-        while (
-            not np.array_equal(mask, mask_in_loop)
-            and self.do_boundary_dilation.tel[tel_id]
-        ):
-            mask_in_loop = mask
-            mask = dilate(camera_geom, mask) & pixels_above_boundary_thresh
 
-        # 3) Step: Adding Pixels with 'dilate' to get more conservative.
+        # 2) Step: Adding Pixels with 'dilate' to get more conservative.
         for _ in range(self.n_end_dilates.tel[tel_id]):
             mask = dilate(camera_geom, mask)
 
         return mask
+
+
+
