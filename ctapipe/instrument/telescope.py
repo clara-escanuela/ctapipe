@@ -39,6 +39,7 @@ class TelescopeDescription:
     """
 
     __slots__ = (
+        "noise",
         "name",
         "optics",
         "camera",
@@ -46,6 +47,7 @@ class TelescopeDescription:
 
     def __init__(
         self,
+        noise: list,
         name: str,
         optics: OpticsDescription,
         camera: CameraDescription,
@@ -63,6 +65,7 @@ class TelescopeDescription:
         self.name = name
         self.optics = optics
         self.camera = camera
+        self.noise = noise
 
     def __hash__(self):
         """Make this hashable, so it can be used as dict keys or in sets"""
@@ -119,6 +122,10 @@ class TelescopeDescription:
         """Size classification"""
         return self.optics.size_type
 
+    @property
+    def calculate_noise(self):
+        return self.noise
+
     def __str__(self):
         return f"{self.type}_{self.optics_name}_{self.camera_name}"
 
@@ -128,5 +135,6 @@ class TelescopeDescription:
             f"type={self.type.value!r}"
             f", optics_name={self.optics_name!r}"
             f", camera_name={self.camera_name!r}"
+            f", noise={self.calculate_noise!r}"
             ")"
         )

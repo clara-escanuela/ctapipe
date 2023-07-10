@@ -15,6 +15,8 @@ from astropy.time import Time
 from eventio.file_types import is_eventio
 from eventio.simtel.simtelfile import SimTelFile
 
+from ctapipe.image.extractor import deconvolve
+
 from ..atmosphere import (
     AtmosphereDensityProfile,
     FiveLayerAtmosphereDensityProfile,
@@ -661,6 +663,7 @@ class SimTelEventSource(EventSource):
             )
 
             tel_descriptions[tel_id] = TelescopeDescription(
+                noise=self._get_noise(tel_id),
                 name=telescope.name,
                 optics=optics,
                 camera=camera,
@@ -871,6 +874,54 @@ class SimTelEventSource(EventSource):
             )
 
         return TelescopePointingContainer(azimuth=azimuth, altitude=altitude)
+
+    def _get_noise(self, sel_tel_id):
+        pseudo_event_id = 0
+        sel_samples = []
+        noise = []
+        for counter, array_event in enumerate(self.file_):
+
+            event_id = array_event.get("event_id", 0)
+            if event_id == 0:
+                pseudo_event_id -= 1
+                event_id = pseudo_event_id
+
+            obs_id = self.file_.header["run"]
+
+            trigger = self._fill_trigger_info(array_event)
+            if trigger.event_type == EventType.SUBARRAY:
+                shower = self._fill_simulated_event_information(array_event)
+            else:
+                shower = None
+
+            data = ArrayEventContainer(
+                simulation=SimulatedEventContainer(shower=shower),
+                pointing=self._fill_array_pointing(),
+                index=EventIndexContainer(obs_id=obs_id, event_id=event_id),
+                count=counter,
+                trigger=trigger,
+            )
+            data.meta["origin"] = "hessio"
+            data.meta["input_url"] = self.input_url
+            data.meta["max_events"] = self.max_events
+
+            telescope_events = array_event["telescope_events"]
+
+            for tel_id, telescope_event in telescope_events.items():
+                if tel_id == sel_tel_id:
+                    adc_samples = telescope_event.get("adc_samples")
+                    if adc_samples is None:
+                        adc_samples = telescope_event["adc_sums"][:, :, np.newaxis]
+
+                    diff_traces = deconvolve(adc_samples[0].astype(float), 0.0, 1, 1.0)
+
+                    sel_samples.append(diff_traces[:, 2])
+
+        if len(sel_samples) != 0:
+            for i in range(len(sel_samples[0])):
+                noise.append(np.std(np.array(sel_samples)[:, i]))
+
+        return noise
 
     def _fill_trigger_info(self, array_event):
         trigger = array_event["trigger_information"]
