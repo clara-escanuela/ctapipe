@@ -12,6 +12,7 @@ from numba import float32, float64, guvectorize, int64
 from ctapipe.containers import DL1CameraContainer
 from ctapipe.core import TelescopeComponent
 from ctapipe.core.traits import (
+    Bool,
     BoolTelescopeParameter,
     ComponentName,
     TelescopeParameter,
@@ -19,6 +20,7 @@ from ctapipe.core.traits import (
 from ctapipe.image.extractor import ImageExtractor
 from ctapipe.image.invalid_pixels import InvalidPixelHandler
 from ctapipe.image.reducer import DataVolumeReducer
+from ctapipe.image.time_clustering import WaveformVolumeReducer
 
 __all__ = ["CameraCalibrator"]
 
@@ -53,8 +55,21 @@ class CameraCalibrator(TelescopeComponent):
         The name of the ImageExtractor subclass to be used for image extraction
     """
 
+    waveform_reducer = Bool(
+        default_value=False,
+        help=(
+            "Apply waveform time shift corrections."
+            " The minimal integer shift to synchronize waveforms is applied"
+            " before peak extraction if this option is True"
+        ),
+    ).tag(config=True)
+
     data_volume_reducer_type = ComponentName(
         DataVolumeReducer, default_value="NullDataVolumeReducer"
+    ).tag(config=True)
+
+    wf_volume_reducer_type = ComponentName(
+        WaveformVolumeReducer, default_value="ClusteringDataVolumeReducer"
     ).tag(config=True)
 
     image_extractor_type = TelescopeParameter(
@@ -138,12 +153,17 @@ class CameraCalibrator(TelescopeComponent):
             self.image_extractor_type = [("type", "*", name)]
             self.image_extractors[name] = image_extractor
 
-        if data_volume_reducer is None:
-            self.data_volume_reducer = DataVolumeReducer.from_name(
-                self.data_volume_reducer_type, subarray=self.subarray, parent=self
+        if self.waveform_reducer == True:
+            self.data_volume_reducer = WaveformVolumeReducer.from_name(
+                self.wf_volume_reducer_type, subarray=self.subarray, parent=self
             )
         else:
-            self.data_volume_reducer = data_volume_reducer
+            if data_volume_reducer is None:
+                self.data_volume_reducer = DataVolumeReducer.from_name(
+                    self.data_volume_reducer_type, subarray=self.subarray, parent=self
+                )
+            else:
+                self.data_volume_reducer = data_volume_reducer
 
         self.invalid_pixel_handler = None
         if self.invalid_pixel_handler_type is not None:
@@ -183,9 +203,16 @@ class CameraCalibrator(TelescopeComponent):
         if self._check_r1_empty(waveforms):
             return
 
-        reduced_waveforms_mask = self.data_volume_reducer(
-            waveforms, tel_id=tel_id, selected_gain_channel=selected_gain_channel
-        )
+        if self.waveform_reducer == True:
+            reduced_waveforms_mask = self.data_volume_reducer(
+                event.r0.tel[tel_id].waveform,
+                tel_id=tel_id,
+                selected_gain_channel=selected_gain_channel,
+            )
+        else:
+            reduced_waveforms_mask = self.data_volume_reducer(
+                waveforms, tel_id=tel_id, selected_gain_channel=selected_gain_channel
+            )
 
         waveforms_copy = waveforms.copy()
         waveforms_copy[~reduced_waveforms_mask] = 0

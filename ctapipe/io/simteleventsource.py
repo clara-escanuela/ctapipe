@@ -4,6 +4,7 @@ from contextlib import nullcontext
 from enum import Enum, auto, unique
 from gzip import GzipFile
 from io import BufferedReader
+from itertools import chain
 from pathlib import Path
 from typing import Dict, Optional, Union
 
@@ -146,7 +147,7 @@ def _location_from_meta(global_meta):
     )
 
 
-def build_camera(simtel_telescope, telescope, frame):
+def build_camera(noise, simtel_telescope, telescope, frame):
     """Create CameraDescription from eventio data structures"""
     camera_settings = simtel_telescope["camera_settings"]
     pixel_settings = simtel_telescope["pixel_settings"]
@@ -188,6 +189,7 @@ def build_camera(simtel_telescope, telescope, frame):
     )
 
     return CameraDescription(
+        noise=noise,
         name=telescope.camera_name,
         geometry=geometry,
         readout=readout,
@@ -508,6 +510,15 @@ class SimTelEventSource(EventSource):
             skip_calibration=self.skip_calibration_events,
             zcat=not self.back_seekable,
         )
+        try:
+            self.event_iter = iter(self.file_)
+            self.first_event = next(self.event_iter)
+
+        except (
+            StopIteration
+        ):  # Telescopes with no events will raise an error. This is not a nice solution.
+            pass
+
         if self.back_seekable and self.is_stream:
             raise IOError("back seekable was required but not possible for inputfile")
 
@@ -656,14 +667,21 @@ class SimTelEventSource(EventSource):
                     f"Invalid focal length choice: {self.focal_length_choice}"
                 )
 
+            self.file_ = SimTelFile(
+                self.input_url.expanduser(),
+                allowed_telescopes=self.allowed_tels,
+                skip_calibration=self.skip_calibration_events,
+                zcat=not self.back_seekable,
+            )
             camera = build_camera(
+                self._get_noise(self.file_, tel_id),
                 telescope_description,
                 telescope,
                 frame=CameraFrame(focal_length=focal_length),
             )
 
             tel_descriptions[tel_id] = TelescopeDescription(
-                noise=self._get_noise(tel_id),
+                # noise=self._get_noise(tel_id),
                 name=telescope.name,
                 optics=optics,
                 camera=camera,
@@ -717,7 +735,10 @@ class SimTelEventSource(EventSource):
         # for events without event_id, we use negative event_ids
         pseudo_event_id = 0
 
-        for counter, array_event in enumerate(self.file_):
+        for counter, array_event in enumerate(
+            chain((self.first_event,), self.event_iter)
+        ):
+            # for counter, array_event in enumerate(self.file_):
 
             event_id = array_event.get("event_id", 0)
             if event_id == 0:
@@ -875,12 +896,13 @@ class SimTelEventSource(EventSource):
 
         return TelescopePointingContainer(azimuth=azimuth, altitude=altitude)
 
-    def _get_noise(self, sel_tel_id):
+    def _get_noise(self, file, sel_tel_id):
         pseudo_event_id = 0
         sel_samples = []
         noise = []
-        for counter, array_event in enumerate(self.file_):
 
+        i = 0
+        for counter, array_event in enumerate(file):
             event_id = array_event.get("event_id", 0)
             if event_id == 0:
                 pseudo_event_id -= 1
@@ -916,6 +938,10 @@ class SimTelEventSource(EventSource):
                     diff_traces = deconvolve(adc_samples[0].astype(float), 0.0, 1, 1.0)
 
                     sel_samples.append(diff_traces[:, 2])
+
+            i += 1
+            if i > 10:
+                continue
 
         if len(sel_samples) != 0:
             for i in range(len(sel_samples[0])):

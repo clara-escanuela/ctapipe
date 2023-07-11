@@ -6,6 +6,8 @@ import sys
 
 from tqdm.auto import tqdm
 
+from ctapipe.image.time_clustering import WaveformCleaner
+
 from ..calib import CameraCalibrator, GainSelector
 from ..core import QualityQuery, Tool
 from ..core.traits import Bool, classes_with_traits, flag
@@ -156,6 +158,7 @@ class ProcessorTool(Tool):
         ]
         + classes_with_traits(EventSource)
         + classes_with_traits(ImageCleaner)
+        + classes_with_traits(WaveformCleaner)
         + classes_with_traits(ImageExtractor)
         + classes_with_traits(GainSelector)
         + classes_with_traits(QualityQuery)

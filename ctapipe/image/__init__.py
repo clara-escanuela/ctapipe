@@ -60,6 +60,7 @@ from .pixel_likelihood import (
 )
 from .reducer import DataVolumeReducer, NullDataVolumeReducer, TailCutsDataVolumeReducer
 from .statistics import descriptive_statistics
+from .time_clustering import WaveformCleaner
 from .timing import timing_parameters
 
 __all__ = [
@@ -83,6 +84,7 @@ __all__ = [
     "fact_image_cleaning",
     "apply_time_delta_cleaning",
     "ImageCleaner",
+    "WaveformCleaner",
     "TailcutsImageCleaner",
     "neg_log_likelihood_approx",
     "neg_log_likelihood_numeric",

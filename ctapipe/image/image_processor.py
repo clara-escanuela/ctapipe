@@ -26,6 +26,7 @@ from .leakage import leakage_parameters
 from .modifications import ImageModifier
 from .morphology import morphology_parameters
 from .statistics import descriptive_statistics
+from .time_clustering import WaveformCleaner
 from .timing import timing_parameters
 
 # avoid use of base containers for unparameterized images
@@ -64,6 +65,10 @@ class ImageProcessor(TelescopeComponent):
     Should be run after CameraCalibrator to produce all DL1 information.
     """
 
+    waveform_cleaner = Bool(
+        default_value=False, help="If true, apply ImageModifier to dl1 images"
+    ).tag(config=True)
+
     image_cleaner_type = ComponentName(
         ImageCleaner, default_value="TailcutsImageCleaner"
     ).tag(config=True)
@@ -98,9 +103,14 @@ class ImageProcessor(TelescopeComponent):
 
         super().__init__(subarray=subarray, config=config, parent=parent, **kwargs)
         self.subarray = subarray
-        self.clean = ImageCleaner.from_name(
-            self.image_cleaner_type, subarray=subarray, parent=self
-        )
+        if self.waveform_cleaner == True:
+            self.clean = WaveformCleaner.from_name(
+                "TimeCleaner", subarray=subarray, parent=self
+            )
+        else:
+            self.clean = ImageCleaner.from_name(
+                self.image_cleaner_type, subarray=subarray, parent=self
+            )
         self.modify = ImageModifier(subarray=subarray, parent=self)
 
         self.check_image = ImageQualityQuery(parent=self)
@@ -213,16 +223,24 @@ class ImageProcessor(TelescopeComponent):
         """
         Loop over telescopes and process the calibrated images into parameters
         """
-        for tel_id, dl1_camera in event.dl1.tel.items():
 
+        for tel_id in event.dl1.tel.keys():
+            dl1_camera = event.dl1.tel[tel_id]
+            r0_camera = event.r0.tel[tel_id]
             if self.apply_image_modifier.tel[tel_id]:
                 dl1_camera.image = self.modify(tel_id=tel_id, image=dl1_camera.image)
 
-            dl1_camera.image_mask = self.clean(
-                tel_id=tel_id,
-                image=dl1_camera.image,
-                arrival_times=dl1_camera.peak_time,
-            )
+            if self.waveform_cleaner == True:
+                dl1_camera.image_mask = self.clean(
+                    tel_id=tel_id,
+                    waveform=r0_camera.waveform,
+                )
+            else:
+                dl1_camera.image_mask = self.clean(
+                    tel_id=tel_id,
+                    image=dl1_camera.image,
+                    arrival_times=dl1_camera.peak_time,
+                )
 
             dl1_camera.parameters = self._parameterize_image(
                 tel_id=tel_id,
