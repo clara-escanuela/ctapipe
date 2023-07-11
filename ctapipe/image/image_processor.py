@@ -231,10 +231,12 @@ class ImageProcessor(TelescopeComponent):
                 dl1_camera.image = self.modify(tel_id=tel_id, image=dl1_camera.image)
 
             if self.waveform_cleaner == True:
-                dl1_camera.image_mask = self.clean(
+                first_mask = self.clean(
                     tel_id=tel_id,
                     waveform=r0_camera.waveform,
                 )
+                second_mask = dl1_camera.image >= 0
+                dl1_camera.image_mask = first_mask & second_mask
             else:
                 dl1_camera.image_mask = self.clean(
                     tel_id=tel_id,

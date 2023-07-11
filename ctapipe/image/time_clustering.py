@@ -68,22 +68,22 @@ def time_clustering(
     pix_y = y / d_scale
 
     X = np.column_stack((time / t_scale, pix_x, pix_y))
-    # try:
-    db = DBSCAN(eps=dd, min_samples=n_min, algorithm="kd_tree").fit(X)
-    labels = db.labels_
+    try:
+        db = DBSCAN(eps=dd, min_samples=n_min, algorithm="kd_tree").fit(X)
+        labels = db.labels_
 
-    # no_clusters = len(np.unique(labels))-1  # IMPORTANT!
+        # no_clusters = len(np.unique(labels))-1  # IMPORTANT!
 
-    arr[(labels == -1)] = -1
-    pix_arr[np.array(pix_ids)[np.array(arr) == 0].astype(int)] = 0
+        arr[(labels == -1)] = -1
+        pix_arr[np.array(pix_ids)[np.array(arr) == 0].astype(int)] = 0
 
-    mask = pix_arr == 0  # we keep these events
-    for _ in range(int(rows)):
-        mask = dilate(geom, mask)
+        mask = pix_arr == 0  # we keep these events
+        for _ in range(int(rows)):
+            mask = dilate(geom, mask)
 
-    return mask
-    # except:
-    #    ValueError
+        return mask
+    except ValueError:
+        pass
 
 
 class WaveformCleaner(TelescopeComponent):

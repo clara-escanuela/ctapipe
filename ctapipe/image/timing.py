@@ -2,20 +2,19 @@
 Image timing-based shower image parametrization.
 """
 
-import numpy as np
 import astropy.units as u
-from ..containers import (
-    CameraTimingParametersContainer,
-    TimingParametersContainer,
-    CameraHillasParametersContainer,
-    HillasParametersContainer,
-)
-from .hillas import camera_to_shower_coordinates
-from ..utils.quantities import all_to_value
-from ..fitting import lts_linear_regression
-
+import numpy as np
 from numba import njit
 
+from ..containers import (
+    CameraHillasParametersContainer,
+    CameraTimingParametersContainer,
+    HillasParametersContainer,
+    TimingParametersContainer,
+)
+from ..fitting import lts_linear_regression
+from ..utils.quantities import all_to_value
+from .hillas import camera_to_shower_coordinates
 
 __all__ = ["timing_parameters"]
 
@@ -79,7 +78,10 @@ def timing_parameters(geom, image, peak_time, hillas_parameters, cleaning_mask=N
     )
 
     # re-fit using a robust-to-outlier algorithm
-    beta, error = lts_linear_regression(x=longi, y=peak_time, samples=5)
+    if len(longi) == 1:
+        beta, error = [0, 0], 0
+    else:
+        beta, error = lts_linear_regression(x=longi, y=peak_time, samples=5)
 
     # error from lts_linear_regression is only for the used points,
     # recalculate for all points

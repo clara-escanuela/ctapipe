@@ -647,7 +647,7 @@ class SubarrayDescription:
                 )
             )
             cameras[idx] = CameraDescription(
-                name=geometry.name, readout=readout, geometry=geometry
+                noise=[0.0], name=geometry.name, readout=readout, geometry=geometry
             )
 
         optics_table = read_table(
