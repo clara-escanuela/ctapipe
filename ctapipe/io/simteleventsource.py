@@ -15,6 +15,8 @@ from astropy.time import Time
 from eventio.file_types import is_eventio
 from eventio.simtel.simtelfile import SimTelFile
 
+from ctapipe.image.extractor import deconvolve
+
 from ..atmosphere import (
     AtmosphereDensityProfile,
     FiveLayerAtmosphereDensityProfile,
@@ -144,7 +146,7 @@ def _location_from_meta(global_meta):
     )
 
 
-def build_camera(simtel_telescope, telescope, frame):
+def build_camera(noise, simtel_telescope, telescope, frame):
     """Create CameraDescription from eventio data structures"""
     camera_settings = simtel_telescope["camera_settings"]
     pixel_settings = simtel_telescope["pixel_settings"]
@@ -186,6 +188,7 @@ def build_camera(simtel_telescope, telescope, frame):
     )
 
     return CameraDescription(
+        noise=noise,
         name=telescope.camera_name,
         geometry=geometry,
         readout=readout,
@@ -655,6 +658,7 @@ class SimTelEventSource(EventSource):
                 )
 
             camera = build_camera(
+                self._get_noise(self.file_, tel_id),
                 telescope_description,
                 telescope,
                 frame=CameraFrame(focal_length=focal_length),
@@ -818,6 +822,7 @@ class SimTelEventSource(EventSource):
                     self.calib_scale,
                     self.calib_shift,
                 )
+
                 data.r1.tel[tel_id] = R1CameraContainer(
                     waveform=r1_waveform,
                     selected_gain_channel=selected_gain_channel,
@@ -846,6 +851,72 @@ class SimTelEventSource(EventSource):
             pedestal_failing_pixels=disabled_pixels.copy(),
             flatfield_failing_pixels=disabled_pixels.copy(),
         )
+
+    def _get_noise(self, file_, sel_tel_id):
+        pseudo_event_id = 0
+        sel_samples = []
+        noise = []
+
+        i = 0
+        for counter, array_event in enumerate(file_):
+            event_id = array_event.get("event_id", 0)
+            if event_id == 0:
+                pseudo_event_id -= 1
+                event_id = pseudo_event_id
+
+            obs_id = file_.header["run"]
+
+            trigger = self._fill_trigger_info(array_event)
+            if trigger.event_type == EventType.SUBARRAY:
+                shower = self._fill_simulated_event_information(array_event)
+            else:
+                shower = None
+
+            data = ArrayEventContainer(
+                simulation=SimulatedEventContainer(shower=shower),
+                pointing=self._fill_array_pointing(),
+                index=EventIndexContainer(obs_id=obs_id, event_id=event_id),
+                count=counter,
+                trigger=trigger,
+            )
+            data.meta["origin"] = "hessio"
+            data.meta["input_url"] = self.input_url
+            data.meta["max_events"] = self.max_events
+
+            telescope_events = array_event["telescope_events"]
+
+            for tel_id, telescope_event in telescope_events.items():
+                if tel_id == sel_tel_id:
+                    i += 1
+                    adc_samples = telescope_event.get("adc_samples")
+                    if adc_samples is None:
+                        adc_samples = telescope_event["adc_sums"][:, :, np.newaxis]
+
+                    cam_mon = array_event["camera_monitorings"][tel_id]
+                    pedestal = cam_mon["pedestal"] / cam_mon["n_ped_slices"]
+                    dc_to_pe = array_event["laser_calibrations"][tel_id]["calib"]
+
+                    r1_waveform, selected_gain_channel = apply_simtel_r1_calibration(
+                        adc_samples,
+                        pedestal,
+                        dc_to_pe,
+                        0.0,
+                        1.0,
+                        0.0,
+                    )
+
+                    diff_traces = deconvolve(r1_waveform, 0.0, 1, 1.0)
+
+                    sel_samples.append(diff_traces[:, 2])
+
+            if i > 1000:
+                break
+
+        if len(sel_samples) != 0:
+            for i in range(len(sel_samples[0])):
+                noise.append(np.std(np.array(sel_samples)[:, i]))
+
+        return noise
 
     @staticmethod
     def _fill_event_pointing(tracking_position):
