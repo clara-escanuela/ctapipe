@@ -914,7 +914,7 @@ class SimTelEventSource(EventSource):
 
         if len(sel_samples) != 0:
             for i in range(len(sel_samples[0])):
-                noise.append(np.std(np.array(sel_samples)[:, i]))
+                noise.append(np.sqrt(np.mean(np.array(sel_samples)[:, i] ** 2)))
 
         return noise
 

@@ -202,9 +202,24 @@ class CameraCalibrator(TelescopeComponent):
         if self._check_r1_empty(waveforms):
             return
 
-        reduced_waveforms_mask = self.data_volume_reducer(
-            waveforms, tel_id=tel_id, selected_gain_channel=selected_gain_channel
+        n_pixels, n_samples = waveforms.shape
+        broken_pixels = _get_invalid_pixels(
+            n_pixels,
+            event.mon.tel[tel_id].pixel_status,
+            selected_gain_channel,
         )
+
+        if self.waveform_reducer is False:
+            reduced_waveforms_mask = self.data_volume_reducer(
+                waveforms, tel_id=tel_id, selected_gain_channel=selected_gain_channel
+            )
+        else:
+            reduced_waveforms_mask = self.data_volume_reducer(
+                waveforms,
+                broken_pixels=broken_pixels,
+                tel_id=tel_id,
+                selected_gain_channel=selected_gain_channel,
+            )
 
         waveforms_copy = waveforms.copy()
         waveforms_copy[~reduced_waveforms_mask] = 0

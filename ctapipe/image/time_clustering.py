@@ -1,6 +1,5 @@
 from abc import abstractmethod
 
-import hdbscan
 import numpy as np
 from scipy.signal import find_peaks
 from sklearn.cluster import DBSCAN
@@ -40,93 +39,69 @@ def get_cluster(subarray, broken_pixels, tel_id, waveform, cut):
     x = np.array([])
     y = np.array([])
     pix_ids = np.array([])
+    snrs = np.array([])
     for i in range(len(snr)):
         local_max_pos = find_peaks(snr[i])[0]
         local_max = snr[i][local_max_pos]
-        local_max_pos = local_max_pos[local_max > cut]
+        pos = local_max_pos[local_max > cut]
 
-        x = np.append(x, x_pos[i][local_max_pos])
-        y = np.append(y, y_pos[i][local_max_pos])
-        pix_ids = np.append(pix_ids, pix_id[i][local_max_pos])
-        time = np.append(time, local_max_pos)
+        x = np.append(x, x_pos[i][pos])
+        y = np.append(y, y_pos[i][pos])
+        pix_ids = np.append(pix_ids, pix_id[i][pos])
+        time = np.append(time, pos)
 
-    return time, x, y, pix_ids
+        snrs = np.append(snrs, snr[i][pos])
+
+    return time, x, y, pix_ids, snrs
+
+
+PIXEL_SPACING = {
+    "LSTCam": 0.05,
+    "NectarCam": 0.05,
+    "FlashCam": 0.05,
+    "SST-Camera": 0.5,
+    "CHEC": 0.05,
+    "DUMMY": 0.05,
+    "testcam": 0.05,
+}
 
 
 def time_clustering(
     subarray,
     tel_id,
     r0_waveform,
-    cut=4.0,
+    broken_pixels,
+    cut=2.5,
     n_min=5,
     dd=1.0,
     t_scale=4.0,
-    d_scale=0.1,
+    d_scale=2.5,
     rows=0.0,
+    scale=2,
+    shift=2,
+    N=2,
 ):
-    bp = np.zeros(1764, dtype=float)
-    broken_pixels = bp != 0
-    broken_pixels[np.array([219, 576, 578, 807, 1395, 1684])] = True
 
-    time, x, y, pix_ids = get_cluster(subarray, broken_pixels, tel_id, r0_waveform, cut)
+    time, x, y, pix_ids, snrs = get_cluster(
+        subarray, broken_pixels, tel_id, r0_waveform, cut
+    )
     geom = subarray.tel[tel_id].camera.geometry
 
     arr = np.zeros(len(time), dtype=float)
     pix_arr = -np.ones(geom.n_pixels, dtype=int)
 
-    pix_x = x / d_scale
-    pix_y = y / d_scale
+    pix_x = x / (d_scale * PIXEL_SPACING[geom.name])
+    pix_y = y / (d_scale * PIXEL_SPACING[geom.name])
 
     X = np.column_stack((time / t_scale, pix_x, pix_y))
 
-    db = DBSCAN(eps=dd, min_samples=n_min).fit(X)
+    db = DBSCAN(eps=dd, min_samples=n_min).fit(
+        X, sample_weight=N / (1 + np.exp(-(snrs + shift) / scale))
+    )
     labels = db.labels_
 
-    arr[(labels == -1)] = -1
-    pix_arr[np.array(pix_ids)[np.array(arr) == 0].astype(int)] = 0
-
-    mask = pix_arr == 0  # we keep these events
-    for _ in range(int(rows)):
-        mask = dilate(geom, mask)
-
-    return mask
-
-
-def time_clustering_hdbscan(
-    subarray,
-    tel_id,
-    r0_waveform,
-    cut=4.0,
-    cluster_size=10,
-    n_min=None,
-    rows=0.0,
-):
-
-    if n_min is None:
-        n_min = cluster_size
-
-    bp = np.zeros(1764, dtype=float)
-    broken_pixels = bp != 0
-    broken_pixels[np.array([219, 576, 578, 807, 1395, 1684])] = True
-
-    time, x, y, pix_ids = get_cluster(subarray, broken_pixels, tel_id, r0_waveform, cut)
-    geom = subarray.tel[tel_id].camera.geometry
-
-    arr = np.zeros(len(time), dtype=float)
-    pix_arr = -np.ones(geom.n_pixels, dtype=int)
-
-    pix_x = x
-    pix_y = y
-
-    X = np.column_stack((time, pix_x, pix_y))
-    from sklearn.preprocessing import StandardScaler
-
-    X = StandardScaler().fit_transform(X)
-
-    hdb = hdbscan.HDBSCAN(
-        min_samples=n_min, min_cluster_size=cluster_size, allow_single_cluster=True
-    ).fit(X)
-    labels = hdb.labels_
+    ret_labels = -np.ones(geom.n_pixels, dtype=int)
+    ret_labels[np.array(pix_ids)[np.array(arr) == 0].astype(int)] = labels
 
     arr[(labels == -1)] = -1
     pix_arr[np.array(pix_ids)[np.array(arr) == 0].astype(int)] = 0
@@ -135,7 +110,7 @@ def time_clustering_hdbscan(
     for _ in range(int(rows)):
         mask = dilate(geom, mask)
 
-    return mask
+    return mask, ret_labels
 
 
 """
@@ -150,7 +125,9 @@ class WaveformCleaner(TelescopeComponent):
     """
 
     @abstractmethod
-    def __call__(self, tel_id: int, waveform: np.ndarray = None) -> np.ndarray:
+    def __call__(
+        self, tel_id: int, waveform: np.ndarray, broken_pixels: np.ndarray = None
+    ) -> np.ndarray:
         """
         Identify pixels with signal, and reject those with pure noise.
         Parameters
@@ -201,42 +178,45 @@ class TimeCleaner(WaveformCleaner):
         default_value=5, help="Minimum number of neighbors above threshold to consider"
     ).tag(config=True)
 
-    cluster_size = IntTelescopeParameter(
-        default_value=10, help="Minimum number of neighbors above threshold to consider"
+    scale = FloatTelescopeParameter(
+        default_value=1.0,
+        help="Scale for weighting",
     ).tag(config=True)
 
-    dbscan = BoolTelescopeParameter(
-        default_value=True,
-        help="Minimum number of neighbors above threshold to consider",
+    shift = FloatTelescopeParameter(
+        default_value=0.0,
+        help="Shift for weighting",
     ).tag(config=True)
 
-    def __call__(self, tel_id: int, waveform: np.ndarray = None) -> np.ndarray:
+    N = FloatTelescopeParameter(
+        default_value=1.0,
+        help="Scale for weighting",
+    ).tag(config=True)
+
+    def __call__(
+        self, tel_id: int, waveform: np.ndarray, broken_pixels: np.ndarray = None
+    ) -> np.ndarray:
         """
         Apply standard picture-boundary cleaning. See `ImageCleaner.__call__()`
         """
 
-        if self.dbscan.tel[tel_id] == True:
-            return time_clustering(
-                self.subarray,
-                tel_id,
-                waveform,
-                cut=self.cut.tel[tel_id],
-                n_min=self.n_min.tel[tel_id],
-                dd=self.dd.tel[tel_id],
-                rows=self.rows.tel[tel_id],
-                t_scale=self.t_scale.tel[tel_id],
-                d_scale=self.d_scale.tel[tel_id],
-            )
-        else:
-            return time_clustering_hdbscan(
-                self.subarray,
-                tel_id,
-                waveform,
-                cut=self.cut.tel[tel_id],
-                cluster_size=self.cluster_size.tel[tel_id],
-                n_min=self.n_min.tel[tel_id],
-                rows=self.rows.tel[tel_id],
-            )
+        mask, labels = time_clustering(
+            self.subarray,
+            tel_id,
+            waveform,
+            broken_pixels,
+            cut=self.cut.tel[tel_id],
+            n_min=self.n_min.tel[tel_id],
+            dd=self.dd.tel[tel_id],
+            rows=self.rows.tel[tel_id],
+            t_scale=self.t_scale.tel[tel_id],
+            d_scale=self.d_scale.tel[tel_id],
+            scale=self.scale.tel[tel_id],
+            shift=self.shift.tel[tel_id],
+            N=self.N.tel[tel_id],
+        )
+
+        return mask
 
 
 """
@@ -264,7 +244,9 @@ class WaveformVolumeReducer(TelescopeComponent):
         self.subarray = subarray
         super().__init__(config=config, parent=parent, subarray=subarray, **kwargs)
 
-    def __call__(self, waveforms, tel_id=None, selected_gain_channel=None):
+    def __call__(
+        self, waveforms, broken_pixels=None, tel_id=None, selected_gain_channel=None
+    ):
         """
         Call the relevant functions to perform data volume reduction on the
         waveforms.
@@ -286,12 +268,17 @@ class WaveformVolumeReducer(TelescopeComponent):
             Mask of selected pixels.
         """
         mask = self.select_pixels(
-            waveforms, tel_id=tel_id, selected_gain_channel=selected_gain_channel
+            waveforms,
+            broken_pixels=broken_pixels,
+            tel_id=tel_id,
+            selected_gain_channel=selected_gain_channel,
         )
         return mask
 
     @abstractmethod
-    def select_pixels(self, waveforms, tel_id=None, selected_gain_channel=None):
+    def select_pixels(
+        self, waveforms, broken_pixels=None, tel_id=None, selected_gain_channel=None
+    ):
         """
         Abstract method to be defined by a DataVolumeReducer subclass.
         Call the relevant functions for the required pixel selection.
@@ -351,11 +338,13 @@ class ClusteringWfDataVolumeReducer(WaveformVolumeReducer):
         else:
             self.cleaner = cleaner
 
-    def select_pixels(self, waveforms, tel_id=None, selected_gain_channel=None):
+    def select_pixels(
+        self, waveforms, broken_pixels=None, tel_id=None, selected_gain_channel=None
+    ):
         camera_geom = self.subarray.tel[tel_id].camera.geometry
 
         # 1) Step: Clustering cleaning
-        mask = self.cleaner(tel_id, waveforms)
+        mask = self.cleaner(tel_id, waveforms, broken_pixels=broken_pixels)
 
         # 2) Step: Adding Pixels with 'dilate' to get more conservative.
         for _ in range(self.n_end_dilates.tel[tel_id]):

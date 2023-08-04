@@ -103,7 +103,7 @@ class ImageProcessor(TelescopeComponent):
 
         super().__init__(subarray=subarray, config=config, parent=parent, **kwargs)
         self.subarray = subarray
-        if self.waveform_cleaner == True:
+        if self.waveform_cleaner is True:
             self.clean = WaveformCleaner.from_name(
                 self.image_cleaner_type, subarray=subarray, parent=self
             )
@@ -231,10 +231,15 @@ class ImageProcessor(TelescopeComponent):
             if self.apply_image_modifier.tel[tel_id]:
                 dl1_camera.image = self.modify(tel_id=tel_id, image=dl1_camera.image)
 
-            if self.waveform_cleaner == True:
+            broken_pixels = event.mon.tel[tel_id].pixel_status.hardware_failing_pixels[
+                0
+            ]
+
+            if self.waveform_cleaner is True:
                 first_mask = self.clean(
                     tel_id=tel_id,
                     waveform=r1_camera.waveform,
+                    broken_pixels=broken_pixels,
                 )
                 second_mask = dl1_camera.image >= 0
                 dl1_camera.image_mask = first_mask & second_mask
