@@ -73,6 +73,10 @@ class ImageProcessor(TelescopeComponent):
         ImageCleaner, default_value="TailcutsImageCleaner"
     ).tag(config=True)
 
+    waveform_cleaner_type = ComponentName(
+        WaveformCleaner, default_value="TimeCleaner"
+    ).tag(config=True)
+
     use_telescope_frame = Bool(
         default_value=True,
         help="Whether to calculate parameters in the telescope or camera frame",
@@ -105,7 +109,7 @@ class ImageProcessor(TelescopeComponent):
         self.subarray = subarray
         if self.waveform_cleaner is True:
             self.clean = WaveformCleaner.from_name(
-                self.image_cleaner_type, subarray=subarray, parent=self
+                self.waveform_cleaner_type, subarray=subarray, parent=self
             )
         else:
             self.clean = ImageCleaner.from_name(
