@@ -4,7 +4,6 @@ from contextlib import nullcontext
 from enum import Enum, auto, unique
 from gzip import GzipFile
 from io import BufferedReader
-from itertools import chain
 from pathlib import Path
 from typing import Dict, Optional, Union
 
@@ -605,7 +604,7 @@ class SimTelEventSource(EventSource):
         tel_positions = {}  # tel_id : TelescopeDescription
 
         self.telescope_indices_original = {}
-        tels, noises = self._get_noise(self.file_)
+        tels, noises = self._get_noise()
 
         for tel_id, telescope_description in telescope_descriptions.items():
             cam_settings = telescope_description["camera_settings"]
@@ -730,10 +729,18 @@ class SimTelEventSource(EventSource):
         # for events without event_id, we use negative event_ids
         pseudo_event_id = 0
 
-        for counter, array_event in enumerate(
-            chain((self.first_event,), self.event_iter)
-        ):
+        file__ = SimTelFile(
+            self.input_url.expanduser(),
+            allowed_telescopes=self.allowed_tels,
+            skip_calibration=self.skip_calibration_events,
+            zcat=not self.back_seekable,
+        )
 
+        # for counter, array_event in enumerate(
+        #    chain((self.first_event,), self.event_iter)
+        # ):
+        #    print(counter)
+        for counter, array_event in enumerate(file__):
             event_id = array_event.get("event_id", 0)
             if event_id == 0:
                 pseudo_event_id -= 1
@@ -866,74 +873,6 @@ class SimTelEventSource(EventSource):
             flatfield_failing_pixels=disabled_pixels.copy(),
         )
 
-    def _get_noise(self, file_):
-        pseudo_event_id = 0
-        sel_samples = []
-        tel_ids = []
-
-        for counter, array_event in enumerate(file_):
-            event_id = array_event.get("event_id", 0)
-            if event_id == 0:
-                pseudo_event_id -= 1
-                event_id = pseudo_event_id
-
-            obs_id = file_.header["run"]
-
-            trigger = self._fill_trigger_info(array_event)
-            if trigger.event_type == EventType.SUBARRAY:
-                shower = self._fill_simulated_event_information(array_event)
-            else:
-                shower = None
-
-            data = ArrayEventContainer(
-                simulation=SimulatedEventContainer(shower=shower),
-                pointing=self._fill_array_pointing(),
-                index=EventIndexContainer(obs_id=obs_id, event_id=event_id),
-                count=counter,
-                trigger=trigger,
-            )
-            data.meta["origin"] = "hessio"
-            data.meta["input_url"] = self.input_url
-            data.meta["max_events"] = self.max_events
-
-            telescope_events = array_event["telescope_events"]
-
-            for tel_id, telescope_event in telescope_events.items():
-                adc_samples = telescope_event.get("adc_samples")
-                if adc_samples is None:
-                    adc_samples = telescope_event["adc_sums"][:, :, np.newaxis]
-
-                cam_mon = array_event["camera_monitorings"][tel_id]
-                pedestal = cam_mon["pedestal"] / cam_mon["n_ped_slices"]
-                dc_to_pe = array_event["laser_calibrations"][tel_id]["calib"]
-
-                r1_waveform, selected_gain_channel = apply_simtel_r1_calibration(
-                    adc_samples,
-                    pedestal,
-                    dc_to_pe,
-                    0.0,
-                    1.0,
-                    0.0,
-                )
-
-                diff_traces = deconvolve(r1_waveform, 0.0, 1, 1.0)
-                sel_samples.append(diff_traces[:, 2])
-                tel_ids.append(tel_id)
-
-        noises = []
-        telescopes = []
-        for tel in np.unique(tel_ids):
-            tel_samples = np.array(sel_samples)[np.array(tel_ids) == tel]
-            noise = []
-            if len(tel_samples) != 0:
-                for i in range(len(tel_samples[0])):
-                    noise.append(np.sqrt(np.mean(np.array(tel_samples)[:, i] ** 2)))
-
-            noises.append(noise)
-            telescopes.append(tel)
-
-        return telescopes, noises
-
     @staticmethod
     def _fill_event_pointing(tracking_position):
         azimuth_raw = tracking_position["azimuth_raw"]
@@ -1037,6 +976,74 @@ class SimTelEventSource(EventSource):
                 array_ra=u.Quantity(ra, u.rad),
                 array_dec=u.Quantity(dec, u.rad),
             )
+
+    def _get_noise(self):
+        pseudo_event_id = 0
+        sel_samples = []
+        tel_ids = []
+
+        for counter, array_event in enumerate(self.file_):
+            event_id = array_event.get("event_id", 0)
+            if event_id == 0:
+                pseudo_event_id -= 1
+                event_id = pseudo_event_id
+
+            obs_id = self.file_.header["run"]
+
+            trigger = self._fill_trigger_info(array_event)
+            if trigger.event_type == EventType.SUBARRAY:
+                shower = self._fill_simulated_event_information(array_event)
+            else:
+                shower = None
+
+            data = ArrayEventContainer(
+                simulation=SimulatedEventContainer(shower=shower),
+                pointing=self._fill_array_pointing(),
+                index=EventIndexContainer(obs_id=obs_id, event_id=event_id),
+                count=counter,
+                trigger=trigger,
+            )
+            data.meta["origin"] = "hessio"
+            data.meta["input_url"] = self.input_url
+            data.meta["max_events"] = self.max_events
+
+            telescope_events = array_event["telescope_events"]
+
+            for tel_id, telescope_event in telescope_events.items():
+                adc_samples = telescope_event.get("adc_samples")
+                if adc_samples is None:
+                    adc_samples = telescope_event["adc_sums"][:, :, np.newaxis]
+
+                cam_mon = array_event["camera_monitorings"][tel_id]
+                pedestal = cam_mon["pedestal"] / cam_mon["n_ped_slices"]
+                dc_to_pe = array_event["laser_calibrations"][tel_id]["calib"]
+
+                r1_waveform, selected_gain_channel = apply_simtel_r1_calibration(
+                    adc_samples,
+                    pedestal,
+                    dc_to_pe,
+                    0.0,
+                    1.0,
+                    0.0,
+                )
+
+                diff_traces = deconvolve(r1_waveform, 0.0, 1, 1.0)
+                sel_samples.append(diff_traces[:, 2])
+                tel_ids.append(tel_id)
+
+        noises = []
+        telescopes = []
+        for tel in np.unique(tel_ids):
+            tel_samples = np.array(sel_samples)[np.array(tel_ids) == tel]
+            noise = []
+            if len(tel_samples) != 0:
+                for i in range(len(tel_samples[0])):
+                    noise.append(np.sqrt(np.mean(np.array(tel_samples)[:, i] ** 2)))
+
+            noises.append(noise)
+            telescopes.append(tel)
+
+        return telescopes, noises
 
     def _parse_simulation_header(self):
         """
