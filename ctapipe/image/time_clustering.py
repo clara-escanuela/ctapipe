@@ -71,15 +71,15 @@ def time_clustering(
     tel_id,
     r0_waveform,
     broken_pixels,
-    cut=2.5,
+    cut=3.5,
     n_min=5,
     dd=1.0,
     t_scale=4.0,
     d_scale=2.5,
     rows=0.0,
-    scale=2,
-    shift=2,
-    N=2,
+    scale=4.0,
+    shift=1.5,
+    N=2.0,
 ):
 
     time, x, y, pix_ids, snrs = get_cluster(
@@ -154,7 +154,7 @@ class TimeCleaner(WaveformCleaner):
     """
 
     cut = FloatTelescopeParameter(
-        default_value=4.0, help="top-level threshold in photoelectrons"
+        default_value=3.5, help="top-level threshold in photoelectrons"
     ).tag(config=True)
     dd = FloatTelescopeParameter(
         default_value=1.0, help="top-level threshold in photoelectrons"
@@ -170,7 +170,7 @@ class TimeCleaner(WaveformCleaner):
     ).tag(config=True)
 
     d_scale = FloatTelescopeParameter(
-        default_value=0.1,
+        default_value=2.5,
         help="Minimum number of neighbors above threshold to consider",
     ).tag(config=True)
 
@@ -179,17 +179,17 @@ class TimeCleaner(WaveformCleaner):
     ).tag(config=True)
 
     scale = FloatTelescopeParameter(
-        default_value=1.0,
+        default_value=4.0,
         help="Scale for weighting",
     ).tag(config=True)
 
     shift = FloatTelescopeParameter(
-        default_value=0.0,
+        default_value=1.5,
         help="Shift for weighting",
     ).tag(config=True)
 
     N = FloatTelescopeParameter(
-        default_value=1.0,
+        default_value=2.0,
         help="Scale for weighting",
     ).tag(config=True)
 
