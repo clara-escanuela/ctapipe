@@ -79,7 +79,7 @@ def time_clustering(
     rows=0.0,
     scale=4.0,
     shift=1.5,
-    N=2.0,
+    n_norm=2.0,
 ):
 
     time, x, y, pix_ids, snrs = get_cluster(
@@ -96,7 +96,7 @@ def time_clustering(
     X = np.column_stack((time / t_scale, pix_x, pix_y))
 
     db = DBSCAN(eps=dd, min_samples=n_min).fit(
-        X, sample_weight=N / (1 + np.exp(-(snrs + shift) / scale))
+        X, sample_weight=n_norm / (1 + np.exp(-(snrs + shift) / scale))
     )
     labels = db.labels_
 
@@ -188,7 +188,7 @@ class TimeCleaner(WaveformCleaner):
         help="Shift for weighting",
     ).tag(config=True)
 
-    N = FloatTelescopeParameter(
+    n_norm = FloatTelescopeParameter(
         default_value=2.0,
         help="Scale for weighting",
     ).tag(config=True)
@@ -213,7 +213,7 @@ class TimeCleaner(WaveformCleaner):
             d_scale=self.d_scale.tel[tel_id],
             scale=self.scale.tel[tel_id],
             shift=self.shift.tel[tel_id],
-            N=self.N.tel[tel_id],
+            n_norm=self.n_norm.tel[tel_id],
         )
 
         return mask
