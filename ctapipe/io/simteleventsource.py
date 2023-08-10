@@ -1031,6 +1031,9 @@ class SimTelEventSource(EventSource):
                 sel_samples.append(diff_traces[:, 2])
                 tel_ids.append(tel_id)
 
+            if counter > 200:
+                break
+
         noises = []
         telescopes = []
         for tel in np.unique(tel_ids):
