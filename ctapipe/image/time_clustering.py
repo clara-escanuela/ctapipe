@@ -1,11 +1,13 @@
 from abc import abstractmethod
 
+import astropy.units as u
 import numpy as np
 from scipy.signal import find_peaks
 from sklearn.cluster import DBSCAN
 
 from ctapipe.image.cleaning import dilate
 from ctapipe.image.extractor import deconvolve
+from ctapipe.instrument import CameraDescription
 
 from ..core import TelescopeComponent
 from ..core.traits import (
@@ -17,9 +19,63 @@ from ..core.traits import (
 __all__ = ["WaveformCleaner", "WaveformVolumeReducer"]
 
 
-def get_cluster(subarray, broken_pixels, tel_id, waveform, cut):
+def pz_parameters(camera: CameraDescription, upsampling: int):
+    """
+    Estimates deconvolution and recalibration parameters from the camera's reference
+    single-p.e. pulse shape for the given configuration of FlashCamExtractor.
+
+    Parameters
+    ----------
+    camera : CameraDescription
+        Description of the target camera.
+    upsampling : int
+        Upsampling factor (>= 1); see also `deconvolve(...)`.
+
+    Returns
+    -------
+    pole_zeros : list of floats
+        Pole-zero parameter for each channel to be passed to `deconvolve(...)`.
+    """
+    if upsampling < 1:
+        raise ValueError(f"upsampling must be > 0, got {upsampling}")
+
+    ref_pulse_shapes = camera.readout.reference_pulse_shape
+    ref_sample_width_nsec = camera.readout.reference_pulse_sample_width.to_value(u.ns)
+    camera_sample_width_nsec = 1.0 / camera.readout.sampling_rate.to_value(u.GHz)
+
+    if camera_sample_width_nsec < ref_sample_width_nsec:
+        raise ValueError(
+            f"Reference pulse sampling time (got {ref_sample_width_nsec} ns) must be equal to or shorter than the "
+            f"camera sampling time (got {camera_sample_width_nsec} ns); need a reference single p.e. pulse shape with "
+            "finer sampling!"
+        )
+    avg_step = int(round(camera_sample_width_nsec / ref_sample_width_nsec))
+
+    pole_zeros = []  # avg. pole-zero deconvolution parameters
+    for ref_pulse_shape in ref_pulse_shapes:
+        phase_pzs = []
+        for phase in range(avg_step):
+            x = ref_pulse_shape[phase::avg_step]
+            i_min = np.argmin(np.diff(x)) + 1
+            phase_pzs.append(x[i_min + 1] / x[i_min])
+
+        if len(phase_pzs) == 0:
+            raise ValueError(
+                "ref_pulse_shape is malformed - cannot find deconvolution parameter"
+            )
+        pole_zeros.append(np.mean(phase_pzs))
+
+    return pole_zeros
+
+
+def get_cluster(subarray, broken_pixels, tel_id, waveform, cut, pole_zero=False):
     traces = waveform
-    diff_traces = deconvolve(traces, 0.0, 4, 1.0)[~broken_pixels]
+    if pole_zero is True:
+        pz = pz_parameters(subarray.tel[tel_id].camera, 4)[0]
+        diff_traces = deconvolve(traces, 0.0, 4, pz)[~broken_pixels]
+
+    else:
+        diff_traces = deconvolve(traces, 0.0, 4, 1.0)[~broken_pixels]
 
     snr = (
         diff_traces
@@ -80,10 +136,11 @@ def time_clustering(
     scale=4.0,
     shift=1.5,
     n_norm=2.0,
+    pole_zero=False,
 ):
 
     time, x, y, pix_ids, snrs = get_cluster(
-        subarray, broken_pixels, tel_id, r0_waveform, cut
+        subarray, broken_pixels, tel_id, r0_waveform, cut, pole_zero=pole_zero
     )
     geom = subarray.tel[tel_id].camera.geometry
 
@@ -191,6 +248,12 @@ class TimeCleaner(WaveformCleaner):
     n_norm = FloatTelescopeParameter(
         default_value=2.0,
         help="Scale for weighting",
+    ).tag(config=True)
+
+    pole_zero = BoolTelescopeParameter(
+        default_value=False,
+        help="If set to 'False', the iteration steps in 2) are skipped and"
+        "normal TailcutCleaning is used.",
     ).tag(config=True)
 
     def __call__(
