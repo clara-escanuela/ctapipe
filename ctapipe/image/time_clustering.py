@@ -277,6 +277,7 @@ class TimeCleaner(WaveformCleaner):
             scale=self.scale.tel[tel_id],
             shift=self.shift.tel[tel_id],
             n_norm=self.n_norm.tel[tel_id],
+            pole_zero=self.pole_zero.tel[tel_id],
         )
 
         return mask
