@@ -91,6 +91,8 @@ def get_cluster(subarray, broken_pixels, tel_id, waveform, cut, pole_zero=False)
         :, None
     ] * np.ones(len(snr[0]))
 
+    hard_cut = 0.4
+
     time = np.array([])
     x = np.array([])
     y = np.array([])
@@ -99,7 +101,8 @@ def get_cluster(subarray, broken_pixels, tel_id, waveform, cut, pole_zero=False)
     for i in range(len(snr)):
         local_max_pos = find_peaks(snr[i])[0]
         local_max = snr[i][local_max_pos]
-        pos = local_max_pos[local_max > cut]
+        abs_max = diff_traces[i][local_max_pos]
+        pos = local_max_pos[(local_max > cut) & (abs_max > hard_cut)]
 
         x = np.append(x, x_pos[i][pos])
         y = np.append(y, y_pos[i][pos])

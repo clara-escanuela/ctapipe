@@ -1028,7 +1028,7 @@ class SimTelEventSource(EventSource):
                 )
 
                 diff_traces = deconvolve(r1_waveform, 0.0, 1, 1.0)
-                sel_samples.append(diff_traces[:, 10])
+                sel_samples.append(diff_traces[:, 2])
                 tel_ids.append(tel_id)
 
             if counter > 200:
