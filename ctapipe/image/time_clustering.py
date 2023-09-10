@@ -98,7 +98,7 @@ def get_cluster(subarray, broken_pixels, tel_id, waveform, cut, pole_zero=False)
     snrs = np.array([])
     for i in range(len(snr)):
         conc_snr = np.concatenate((snr[i], [min(snr[i])]))
-        local_max_pos = find_peaks(conc_snr)[0]
+        local_max_pos = find_peaks(conc_snr, height=0.05 * np.max(conc_snr))[0]
         local_max = conc_snr[local_max_pos]
         pos = local_max_pos[(local_max > cut)]
 
