@@ -91,18 +91,16 @@ def get_cluster(subarray, broken_pixels, tel_id, waveform, cut, pole_zero=False)
         :, None
     ] * np.ones(len(snr[0]))
 
-    hard_cut = 0.4
-
     time = np.array([])
     x = np.array([])
     y = np.array([])
     pix_ids = np.array([])
     snrs = np.array([])
     for i in range(len(snr)):
-        local_max_pos = find_peaks(snr[i])[0]
-        local_max = snr[i][local_max_pos]
-        abs_max = diff_traces[i][local_max_pos]
-        pos = local_max_pos[(local_max > cut) & (abs_max > hard_cut)]
+        conc_snr = np.concatenate((snr[i], [min(snr[i])]))
+        local_max_pos = find_peaks(conc_snr)[0]
+        local_max = conc_snr[local_max_pos]
+        pos = local_max_pos[(local_max > cut)]
 
         x = np.append(x, x_pos[i][pos])
         y = np.append(y, y_pos[i][pos])
@@ -139,6 +137,7 @@ def time_clustering(
     scale=4.0,
     shift=1.5,
     n_norm=2.0,
+    weight=True,
     pole_zero=False,
 ):
 
@@ -155,9 +154,13 @@ def time_clustering(
 
     X = np.column_stack((time / t_scale, pix_x, pix_y))
 
-    db = DBSCAN(eps=dd, min_samples=n_min).fit(
-        X, sample_weight=n_norm / (1 + np.exp(-(snrs + shift) / scale))
-    )
+    if weight == True:
+        db = DBSCAN(eps=dd, min_samples=n_min).fit(
+            X, sample_weight=n_norm / (1 + np.exp(-(snrs + shift) / scale))
+        )
+    else:
+        db = DBSCAN(eps=dd, min_samples=n_min).fit(X)
+
     labels = db.labels_
 
     ret_labels = -np.ones(geom.n_pixels, dtype=int)
