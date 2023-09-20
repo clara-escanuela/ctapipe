@@ -1,13 +1,11 @@
 from abc import abstractmethod
 
-import astropy.units as u
 import numpy as np
 from scipy.signal import find_peaks
 from sklearn.cluster import DBSCAN
 
 from ctapipe.image.cleaning import dilate
 from ctapipe.image.extractor import deconvolve
-from ctapipe.instrument import CameraDescription
 
 from ..core import TelescopeComponent
 from ..core.traits import (
@@ -19,107 +17,73 @@ from ..core.traits import (
 __all__ = ["WaveformCleaner", "WaveformVolumeReducer"]
 
 
-def pz_parameters(camera: CameraDescription, upsampling: int):
+def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
     """
-    Estimates deconvolution and recalibration parameters from the camera's reference
-    single-p.e. pulse shape for the given configuration of FlashCamExtractor.
-
+    Get the cluster inputs
     Parameters
     ----------
-    camera : CameraDescription
-        Description of the target camera.
-    upsampling : int
-        Upsampling factor (>= 1); see also `deconvolve(...)`.
+    subarray
+    broken_pixels: array
+        Broken pixels in boolean
+    tel_id : int
+        telescope id
+    traces : ndarray
+        Waveforms stored in a numpy array.
+        Shape: (n_pix, n_samples)
+    cut : float
+        cut in noise
 
     Returns
     -------
-    pole_zeros : list of floats
-        Pole-zero parameter for each channel to be passed to `deconvolve(...)`.
+
     """
-    if upsampling < 1:
-        raise ValueError(f"upsampling must be > 0, got {upsampling}")
+    dtraces = deconvolve(traces, 0.0, 4, 1.0)[~broken_pixels]  # Trace differentiation
+    noise = np.array(subarray.tel[tel_id].camera.noise)[
+        ~broken_pixels
+    ]  # Noise per pixel
+    geometry = subarray.tel[tel_id].camera.geometry[~broken_pixels]
 
-    ref_pulse_shapes = camera.readout.reference_pulse_shape
-    ref_sample_width_nsec = camera.readout.reference_pulse_sample_width.to_value(u.ns)
-    camera_sample_width_nsec = 1.0 / camera.readout.sampling_rate.to_value(u.GHz)
+    arr_ones = np.ones(len(dtraces[0]))
 
-    if camera_sample_width_nsec < ref_sample_width_nsec:
-        raise ValueError(
-            f"Reference pulse sampling time (got {ref_sample_width_nsec} ns) must be equal to or shorter than the "
-            f"camera sampling time (got {camera_sample_width_nsec} ns); need a reference single p.e. pulse shape with "
-            "finer sampling!"
-        )
-    avg_step = int(round(camera_sample_width_nsec / ref_sample_width_nsec))
-
-    pole_zeros = []  # avg. pole-zero deconvolution parameters
-    for ref_pulse_shape in ref_pulse_shapes:
-        phase_pzs = []
-        for phase in range(avg_step):
-            x = ref_pulse_shape[phase::avg_step]
-            i_min = np.argmin(np.diff(x)) + 1
-            phase_pzs.append(x[i_min + 1] / x[i_min])
-
-        if len(phase_pzs) == 0:
-            raise ValueError(
-                "ref_pulse_shape is malformed - cannot find deconvolution parameter"
-            )
-        pole_zeros.append(np.mean(phase_pzs))
-
-    return pole_zeros
-
-
-def get_cluster(subarray, broken_pixels, tel_id, waveform, cut, pole_zero=False):
-    traces = waveform
-    if pole_zero is True:
-        pz = pz_parameters(subarray.tel[tel_id].camera, 4)[0]
-        diff_traces = deconvolve(traces, 0.0, 4, pz)[~broken_pixels]
-
-    else:
-        diff_traces = deconvolve(traces, 0.0, 4, 1.0)[~broken_pixels]
-
-    snr = (
-        diff_traces
-        / np.array(subarray.tel[tel_id].camera.noise)[~broken_pixels][:, None]
-    )
-    x_pos = np.array(subarray.tel[tel_id].camera.geometry.pix_x)[~broken_pixels][
-        :, None
-    ] * np.ones(len(snr[0]))
-    y_pos = np.array(subarray.tel[tel_id].camera.geometry.pix_y)[~broken_pixels][
-        :, None
-    ] * np.ones(len(snr[0]))
-    pix_id = np.array(subarray.tel[tel_id].camera.geometry.pix_id)[~broken_pixels][
-        :, None
-    ] * np.ones(len(snr[0]))
+    # Pixel positions
+    x_pos = np.array(geometry.pix_x)[:, None] * arr_ones
+    y_pos = np.array(geometry.pix_y)[:, None] * arr_ones
+    pix_id = np.array(geometry.pix_id)[:, None] * arr_ones
 
     time = np.array([])
     x = np.array([])
     y = np.array([])
-    pix_ids = np.array([])
-    snrs = np.array([])
-    for i in range(len(snr)):
-        conc_snr = np.concatenate((snr[i], [min(snr[i])]))
-        local_max_pos = find_peaks(conc_snr, height=0.05 * np.max(conc_snr))[0]
-        local_max = conc_snr[local_max_pos]
-        pos = local_max_pos[(local_max > cut)]
+    pix_no = np.array([])
+    snr = np.array([])
+
+    for i in range(len(dtraces)):
+        ctrace = np.concatenate(
+            (dtraces[i], [min(dtraces[i])])
+        )  # To include last peak if it is a local maximum
+        local_max_pos = find_peaks(ctrace, height=0.1 * np.max(ctrace))[0]
+        integral = []
+        for n in local_max_pos:
+            integral.append(np.sum(dtraces[i][(n - 4) : (n + 5)]))
+
+        pos = local_max_pos[(np.array(integral) > cut * noise[i])]
 
         x = np.append(x, x_pos[i][pos])
         y = np.append(y, y_pos[i][pos])
-        pix_ids = np.append(pix_ids, pix_id[i][pos])
+        pix_no = np.append(pix_no, pix_id[i][pos])
         time = np.append(time, pos)
 
-        snrs = np.append(snrs, snr[i][pos])
+        snr = np.append(
+            snr, np.array(integral)[np.array(integral) > cut * noise[i]] / noise[i]
+        )
 
-    return time, x, y, pix_ids, snrs
+    return time, x, y, pix_no, snr
 
 
 PIXEL_SPACING = {
     "LSTCam": 0.05,
     "NectarCam": 0.05,
     "FlashCam": 0.05,
-    "SST-Camera": 0.5,
-    "CHEC": 0.05,
-    "DUMMY": 0.05,
-    "testcam": 0.05,
+    "SST-Cam": 0.5,
 }
 
 
@@ -138,11 +102,10 @@ def time_clustering(
     shift=1.5,
     n_norm=2.0,
     weight=True,
-    pole_zero=False,
 ):
 
     time, x, y, pix_ids, snrs = get_cluster(
-        subarray, broken_pixels, tel_id, r0_waveform, cut, pole_zero=pole_zero
+        subarray, broken_pixels, tel_id, r0_waveform, cut
     )
     geom = subarray.tel[tel_id].camera.geometry
 

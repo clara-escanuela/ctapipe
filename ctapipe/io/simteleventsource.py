@@ -1027,8 +1027,8 @@ class SimTelEventSource(EventSource):
                     0.0,
                 )
 
-                diff_traces = deconvolve(r1_waveform, 0.0, 1, 1.0)
-                sel_samples.append(diff_traces[:, 2])
+                diff_traces = deconvolve(r1_waveform, 0.0, 4, 1.0)
+                sel_samples.append(np.sum(diff_traces[:, 4:13], axis=-1))
                 tel_ids.append(tel_id)
 
             if counter > 200:
@@ -1038,12 +1038,8 @@ class SimTelEventSource(EventSource):
         telescopes = []
         for tel in np.unique(tel_ids):
             tel_samples = np.array(sel_samples)[np.array(tel_ids) == tel]
-            noise = []
-            if len(tel_samples) != 0:
-                for i in range(len(tel_samples[0])):
-                    noise.append(np.sqrt(np.mean(np.array(tel_samples)[:, i] ** 2)))
 
-            noises.append(noise)
+            noises.append(np.std(tel_samples, axis=0))
             telescopes.append(tel)
 
         return telescopes, noises
