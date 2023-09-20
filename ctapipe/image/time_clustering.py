@@ -60,7 +60,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
         ctrace = np.concatenate(
             (dtraces[i], [min(dtraces[i])])
         )  # To include last peak if it is a local maximum
-        local_max_pos = find_peaks(ctrace, height=0.1 * np.max(ctrace))[0]
+        local_max_pos = find_peaks(ctrace, height=0.2 * np.max(ctrace))[0]
         integral = []
         for n in local_max_pos:
             integral.append(np.sum(dtraces[i][(n - 4) : (n + 5)]))
