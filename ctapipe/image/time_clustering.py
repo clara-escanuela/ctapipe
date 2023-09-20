@@ -219,7 +219,7 @@ class TimeCleaner(WaveformCleaner):
         help="Scale for weighting",
     ).tag(config=True)
 
-    pole_zero = BoolTelescopeParameter(
+    weight = BoolTelescopeParameter(
         default_value=False,
         help="If set to 'False', the iteration steps in 2) are skipped and"
         "normal TailcutCleaning is used.",
@@ -246,7 +246,7 @@ class TimeCleaner(WaveformCleaner):
             scale=self.scale.tel[tel_id],
             shift=self.shift.tel[tel_id],
             n_norm=self.n_norm.tel[tel_id],
-            pole_zero=self.pole_zero.tel[tel_id],
+            weight=self.weight.tel[tel_id],
         )
 
         return mask
