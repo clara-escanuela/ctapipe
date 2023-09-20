@@ -1031,7 +1031,7 @@ class SimTelEventSource(EventSource):
                 sel_samples.append(np.sum(diff_traces[:, 4:16], axis=-1))
                 tel_ids.append(tel_id)
 
-            if counter > 200:
+            if counter > 10000:
                 break
 
         noises = []
