@@ -38,7 +38,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
 
     """
     dtraces = deconvolve(traces, 0.0, 4, 1.0)  # Trace differentiation
-    noise = subarray.tel[tel_id].camera.noise.copy()
+    noise = np.array(subarray.tel[tel_id].camera.noise).copy()
     noise[broken_pixels] = 1000.0
 
     geometry = subarray.tel[tel_id].camera.geometry
