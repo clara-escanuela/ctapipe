@@ -76,7 +76,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
             snr, np.array(integral)[np.array(integral) > cut * noise[i]] / noise[i]
         )
 
-        all_snr = np.append(all_snr, np.maxima(np.array(integral)) / noise[i])
+        all_snr = np.append(all_snr, np.max(np.array(integral)) / noise[i])
 
     return time, x, y, pix_no, snr, all_snr
 
