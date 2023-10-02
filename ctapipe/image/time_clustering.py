@@ -55,7 +55,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
     y = np.array([])
     pix_no = np.array([])
     snr = np.array([])
-
+    all_snr = np.array([])
     for i in range(len(dtraces)):
         ctrace = np.concatenate(
             (dtraces[i], [min(dtraces[i])])
@@ -76,7 +76,9 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
             snr, np.array(integral)[np.array(integral) > cut * noise[i]] / noise[i]
         )
 
-    return time, x, y, pix_no, snr
+        all_snr = np.append(all_snr, np.array(integral) / noise[i])
+
+    return time, x, y, pix_no, snr, all_snr
 
 
 PIXEL_SPACING = {
@@ -104,7 +106,7 @@ def time_clustering(
     weight=True,
 ):
 
-    time, x, y, pix_ids, snrs = get_cluster(
+    time, x, y, pix_ids, snrs, all_snrs = get_cluster(
         subarray, broken_pixels, tel_id, r0_waveform, cut
     )
     geom = subarray.tel[tel_id].camera.geometry
@@ -134,7 +136,7 @@ def time_clustering(
 
     mask = pix_arr == 0  # we keep these events
 
-    pixels_above_boundary_thresh = snrs >= 5
+    pixels_above_boundary_thresh = all_snrs >= 5
 
     mask_in_loop = np.array([])
     # 2) Step: Add iteratively all pixels with Signal
