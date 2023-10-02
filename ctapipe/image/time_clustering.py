@@ -39,7 +39,6 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
     """
     dtraces = deconvolve(traces, 0.0, 4, 1.0)  # Trace differentiation
     noise = np.array(subarray.tel[tel_id].camera.noise).copy()
-    noise[broken_pixels] = 1000.0
 
     geometry = subarray.tel[tel_id].camera.geometry
 
@@ -67,14 +66,15 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
 
         pos = local_max_pos[(np.array(integral) > cut * noise[i])]
 
-        x = np.append(x, x_pos[i][pos])
-        y = np.append(y, y_pos[i][pos])
-        pix_no = np.append(pix_no, pix_id[i][pos])
-        time = np.append(time, pos)
+        if i not in np.where(broken_pixels == True)[0]:
+            x = np.append(x, x_pos[i][pos])
+            y = np.append(y, y_pos[i][pos])
+            pix_no = np.append(pix_no, pix_id[i][pos])
+            time = np.append(time, pos)
 
-        snr = np.append(
-            snr, np.array(integral)[np.array(integral) > cut * noise[i]] / noise[i]
-        )
+            snr = np.append(
+                snr, np.array(integral)[np.array(integral) > cut * noise[i]] / noise[i]
+            )
 
         all_snr = np.append(all_snr, np.max(np.array(integral)) / noise[i])
 
