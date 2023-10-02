@@ -133,6 +133,17 @@ def time_clustering(
     pix_arr[np.array(pix_ids)[np.array(arr) == 0].astype(int)] = 0
 
     mask = pix_arr == 0  # we keep these events
+
+    pixels_above_boundary_thresh = snrs >= 5
+
+    mask_in_loop = np.array([])
+    # 2) Step: Add iteratively all pixels with Signal
+    #          S > boundary_thresh with ctapipe module
+    #          'dilate' until no new pixels were added.
+    while not np.array_equal(mask, mask_in_loop):
+        mask_in_loop = mask
+        mask = dilate(geom, mask) & pixels_above_boundary_thresh
+
     for _ in range(int(rows)):
         mask = dilate(geom, mask)
 
