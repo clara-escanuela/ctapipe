@@ -37,10 +37,10 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
     -------
 
     """
-    dtraces = deconvolve(traces, 0.0, 4, 1.0)  # Trace differentiation
-    noise = np.array(subarray.tel[tel_id].camera.noise)
+    dtraces = deconvolve(traces, 0.0, 4, 1.0)[~broken_pixels]  # Trace differentiation
+    noise = np.array(subarray.tel[tel_id].camera.noise)[~broken_pixels]
 
-    geometry = subarray.tel[tel_id].camera.geometry
+    geometry = subarray.tel[tel_id].camera.geometry[~broken_pixels]
 
     arr_ones = np.ones(len(dtraces[0]))
 
@@ -54,7 +54,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
     y = np.array([])
     pix_no = np.array([])
     snr = np.array([])
-    all_snr = np.array([])
+    all_snr = []
     for i in range(len(dtraces)):
         ctrace = np.concatenate(
             (dtraces[i], [min(dtraces[i])])
@@ -75,10 +75,9 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
             snr = np.append(
                 snr, np.array(integral)[np.array(integral) > cut * noise[i]] / noise[i]
             )
+        all_snr.append(np.max(np.array(integral)) / noise[i])
 
-        all_snr = np.append(all_snr, np.max(np.array(integral)) / noise[i])
-
-    return time, x, y, pix_no, snr, all_snr
+    return time, x, y, pix_no, snr, np.array(all_snr), broken_pixels
 
 
 PIXEL_SPACING = {
@@ -106,7 +105,7 @@ def time_clustering(
     weight=True,
 ):
 
-    time, x, y, pix_ids, snrs, all_snrs = get_cluster(
+    time, x, y, pix_ids, snrs, all_snrs, broken_pixels = get_cluster(
         subarray, broken_pixels, tel_id, r0_waveform, cut
     )
     geom = subarray.tel[tel_id].camera.geometry
@@ -137,14 +136,26 @@ def time_clustering(
     mask = pix_arr == 0  # we keep these events
 
     pixels_above_boundary_thresh = all_snrs >= 5
+    pixels_above_picture_thresh = all_snrs >= 10
 
     mask_in_loop = np.array([])
     # 2) Step: Add iteratively all pixels with Signal
     #          S > boundary_thresh with ctapipe module
     #          'dilate' until no new pixels were added.
-    while not np.array_equal(mask, mask_in_loop):
+    for i in range(10):
+        # while (not np.array_equal(mask, mask_in_loop) and ):
         mask_in_loop = mask
-        mask = dilate(geom, mask) & pixels_above_boundary_thresh
+        pixels_with_boundary_neighbors = geom.neighbor_matrix_sparse.dot(mask)
+        pixels_with_picture_neighbors = geom.neighbor_matrix_sparse.dot(
+            pixels_above_picture_thresh
+        )
+        mask = mask | (
+            pixels_above_boundary_thresh
+            & (pixels_with_picture_neighbors | pixels_with_boundary_neighbors)
+        )
+
+        if np.array_equal(mask, mask_in_loop):
+            break
 
     for _ in range(int(rows)):
         mask = dilate(geom, mask)
