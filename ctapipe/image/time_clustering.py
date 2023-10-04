@@ -102,13 +102,14 @@ def time_clustering(
     scale=4.0,
     shift=1.5,
     n_norm=2.0,
-    weight=True,
+    weight=False,
 ):
-
-    time, x, y, pix_ids, snrs, all_snrs, broken_pixels = get_cluster(
+    time, x, y, pix_ids, snrs, all_snr, broken_pixels = get_cluster(
         subarray, broken_pixels, tel_id, r0_waveform, cut
     )
     geom = subarray.tel[tel_id].camera.geometry
+    all_snrs = np.zeros(geom.n_pixels, dtype=float)
+    all_snrs[~broken_pixels] = all_snr
 
     arr = np.zeros(len(time), dtype=float)
     pix_arr = -np.ones(geom.n_pixels, dtype=int)
