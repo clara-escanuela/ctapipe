@@ -1,6 +1,7 @@
 from abc import abstractmethod
 
 import numpy as np
+from scipy import signal
 from scipy.signal import find_peaks
 from sklearn.cluster import DBSCAN
 
@@ -37,7 +38,16 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
     -------
 
     """
-    dtraces = deconvolve(traces, 0.0, 4, 1.0)[~broken_pixels]  # Trace differentiation
+    if subarray.tel[tel_id].camera_name == "FlashCam":
+        dtraces = deconvolve(traces, 0.0, 4, 1.0)[
+            ~broken_pixels
+        ]  # Trace differentiation
+    else:
+        b, a = signal.butter(8, 0.2)
+        s = signal.filtfilt(b, a, traces, method="gust")
+        dtraces = deconvolve(s, 0.0, 1, 1.0)[~broken_pixels]
+
+    dtraces = dtraces.clip(min=0)
     noise = np.array(subarray.tel[tel_id].camera.noise)[~broken_pixels]
 
     geometry = subarray.tel[tel_id].camera.geometry[~broken_pixels]
@@ -59,10 +69,11 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
         ctrace = np.concatenate(
             (dtraces[i], [min(dtraces[i])])
         )  # To include last peak if it is a local maximum
-        local_max_pos = find_peaks(ctrace, height=0.2 * np.max(ctrace))[0]
-        integral = []
-        for n in local_max_pos:
-            integral.append(np.sum(dtraces[i][(n - 4) : (n + 5)]))
+        local_max_pos = find_peaks(ctrace, height=0.4 * np.max(ctrace))[0]
+        integral = ctrace[local_max_pos]
+        # integral = []
+        # for n in local_max_pos:
+        #    integral.append(np.sum(dtraces[i][(n - 4) : (n + 5)]))
 
         pos = local_max_pos[(np.array(integral) > cut * noise[i])]
 
@@ -77,7 +88,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
             )
         all_snr.append(np.max(np.array(integral)) / noise[i])
 
-    return time, x, y, pix_no, snr, np.array(all_snr), broken_pixels
+    return time, x, y, pix_no, snr, np.array(all_snr), pix_no
 
 
 PIXEL_SPACING = {
@@ -104,7 +115,7 @@ def time_clustering(
     n_norm=2.0,
     weight=False,
 ):
-    time, x, y, pix_ids, snrs, all_snr, broken_pixels = get_cluster(
+    time, x, y, pix_ids, snrs, all_snr, pix_no = get_cluster(
         subarray, broken_pixels, tel_id, r0_waveform, cut
     )
     geom = subarray.tel[tel_id].camera.geometry
@@ -114,8 +125,8 @@ def time_clustering(
     arr = np.zeros(len(time), dtype=float)
     pix_arr = -np.ones(geom.n_pixels, dtype=int)
 
-    pix_x = x / (d_scale * PIXEL_SPACING[geom.name])
-    pix_y = y / (d_scale * PIXEL_SPACING[geom.name])
+    pix_x = x / (d_scale)
+    pix_y = y / (d_scale)
 
     X = np.column_stack((time / t_scale, pix_x, pix_y))
 

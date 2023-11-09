@@ -14,7 +14,9 @@ from astropy.table import Table
 from astropy.time import Time
 from eventio.file_types import is_eventio
 from eventio.simtel.simtelfile import SimTelFile
+from scipy import signal
 
+from ctapipe.calib.camera.gainselection import ThresholdGainSelector
 from ctapipe.image.extractor import deconvolve
 
 from ..atmosphere import (
@@ -582,124 +584,6 @@ class SimTelEventSource(EventSource):
     def is_stream(self):
         return not isinstance(self.file_._filehandle, (BufferedReader, GzipFile))
 
-    def prepare_subarray_info(self, telescope_descriptions, header):
-        """
-        Constructs a SubarrayDescription object from the
-        ``telescope_descriptions`` given by ``SimTelFile``
-
-        Parameters
-        ----------
-        telescope_descriptions: dict
-            telescope descriptions as given by ``SimTelFile.telescope_descriptions``
-        header: dict
-            header as returned by ``SimTelFile.header``
-
-        Returns
-        -------
-        SubarrayDescription :
-            instrumental information
-        """
-
-        tel_descriptions = {}  # tel_id : TelescopeDescription
-        tel_positions = {}  # tel_id : TelescopeDescription
-
-        self.telescope_indices_original = {}
-        tels, noises = self._get_noise()
-
-        for tel_id, telescope_description in telescope_descriptions.items():
-            cam_settings = telescope_description["camera_settings"]
-
-            n_pixels = cam_settings["n_pixels"]
-            mirror_area = u.Quantity(cam_settings["mirror_area"], u.m**2)
-
-            equivalent_focal_length = u.Quantity(cam_settings["focal_length"], u.m)
-            effective_focal_length = u.Quantity(
-                cam_settings.get("effective_focal_length", np.nan), u.m
-            )
-
-            telescope = _telescope_from_meta(
-                self.file_.telescope_meta.get(tel_id, {}),
-                mirror_area,
-            )
-
-            if telescope is None:
-                try:
-                    telescope = guess_telescope(
-                        n_pixels,
-                        equivalent_focal_length,
-                        cam_settings["n_mirrors"],
-                    )
-                except ValueError:
-                    telescope = unknown_telescope(mirror_area, n_pixels)
-
-                # TODO: switch to warning or even an exception once
-                # we start relying on this.
-                self.log.info(
-                    "Could not determine telescope from sim_telarray metadata,"
-                    " guessing using builtin lookup-table: %d: %s",
-                    tel_id,
-                    telescope,
-                )
-
-            optics = OpticsDescription(
-                name=telescope.name,
-                size_type=telescope.type,
-                reflector_shape=telescope.reflector_shape,
-                n_mirrors=telescope.n_mirrors,
-                equivalent_focal_length=equivalent_focal_length,
-                effective_focal_length=effective_focal_length,
-                mirror_area=mirror_area,
-                n_mirror_tiles=cam_settings["n_mirrors"],
-            )
-
-            if self.focal_length_choice is FocalLengthKind.EFFECTIVE:
-                if np.isnan(effective_focal_length):
-                    raise RuntimeError(
-                        "`SimTelEventSource.focal_length_choice` was set to 'EFFECTIVE'"
-                        ", but the effective focal length was not present in the file."
-                        " Set `focal_length_choice='EQUIVALENT'` or make sure"
-                        " input files contain the effective focal length"
-                    )
-                focal_length = effective_focal_length
-            elif self.focal_length_choice is FocalLengthKind.EQUIVALENT:
-                focal_length = equivalent_focal_length
-            else:
-                raise ValueError(
-                    f"Invalid focal length choice: {self.focal_length_choice}"
-                )
-
-            camera = build_camera(
-                np.array(noises)[np.array(tels) == tel_id][0],
-                telescope_description,
-                telescope,
-                frame=CameraFrame(focal_length=focal_length),
-            )
-
-            tel_descriptions[tel_id] = TelescopeDescription(
-                name=telescope.name,
-                optics=optics,
-                camera=camera,
-            )
-
-            tel_idx = np.where(header["tel_id"] == tel_id)[0][0]
-            self.telescope_indices_original[tel_id] = tel_idx
-            tel_positions[tel_id] = header["tel_pos"][tel_idx] * u.m
-
-        name = self.file_.global_meta.get(b"ARRAY_CONFIG_NAME", b"MonteCarloArray")
-        subarray = SubarrayDescription(
-            name=name.decode(),
-            tel_positions=tel_positions,
-            tel_descriptions=tel_descriptions,
-            reference_location=_location_from_meta(self.file_.global_meta),
-        )
-
-        self.n_telescopes_original = len(subarray)
-
-        if self.allowed_tels:
-            subarray = subarray.select_subarray(self.allowed_tels)
-
-        return subarray
-
     @staticmethod
     def is_compatible(file_path):
         path = Path(file_path).expanduser()
@@ -857,6 +741,124 @@ class SimTelEventSource(EventSource):
                 dl1_calib.time_shift = time_calib[selected_gain_channel, pix_index]
 
             yield data
+
+    def prepare_subarray_info(self, telescope_descriptions, header):
+        """
+        Constructs a SubarrayDescription object from the
+        ``telescope_descriptions`` given by ``SimTelFile``
+
+        Parameters
+        ----------
+        telescope_descriptions: dict
+            telescope descriptions as given by ``SimTelFile.telescope_descriptions``
+        header: dict
+            header as returned by ``SimTelFile.header``
+
+        Returns
+        -------
+        SubarrayDescription :
+            instrumental information
+        """
+
+        tel_descriptions = {}  # tel_id : TelescopeDescription
+        tel_positions = {}  # tel_id : TelescopeDescription
+
+        self.telescope_indices_original = {}
+        tels, noises = self._get_noise()
+
+        for tel_id, telescope_description in telescope_descriptions.items():
+            cam_settings = telescope_description["camera_settings"]
+
+            n_pixels = cam_settings["n_pixels"]
+            mirror_area = u.Quantity(cam_settings["mirror_area"], u.m**2)
+
+            equivalent_focal_length = u.Quantity(cam_settings["focal_length"], u.m)
+            effective_focal_length = u.Quantity(
+                cam_settings.get("effective_focal_length", np.nan), u.m
+            )
+
+            telescope = _telescope_from_meta(
+                self.file_.telescope_meta.get(tel_id, {}),
+                mirror_area,
+            )
+
+            if telescope is None:
+                try:
+                    telescope = guess_telescope(
+                        n_pixels,
+                        equivalent_focal_length,
+                        cam_settings["n_mirrors"],
+                    )
+                except ValueError:
+                    telescope = unknown_telescope(mirror_area, n_pixels)
+
+                # TODO: switch to warning or even an exception once
+                # we start relying on this.
+                self.log.info(
+                    "Could not determine telescope from sim_telarray metadata,"
+                    " guessing using builtin lookup-table: %d: %s",
+                    tel_id,
+                    telescope,
+                )
+
+            optics = OpticsDescription(
+                name=telescope.name,
+                size_type=telescope.type,
+                reflector_shape=telescope.reflector_shape,
+                n_mirrors=telescope.n_mirrors,
+                equivalent_focal_length=equivalent_focal_length,
+                effective_focal_length=effective_focal_length,
+                mirror_area=mirror_area,
+                n_mirror_tiles=cam_settings["n_mirrors"],
+            )
+
+            if self.focal_length_choice is FocalLengthKind.EFFECTIVE:
+                if np.isnan(effective_focal_length):
+                    raise RuntimeError(
+                        "`SimTelEventSource.focal_length_choice` was set to 'EFFECTIVE'"
+                        ", but the effective focal length was not present in the file."
+                        " Set `focal_length_choice='EQUIVALENT'` or make sure"
+                        " input files contain the effective focal length"
+                    )
+                focal_length = effective_focal_length
+            elif self.focal_length_choice is FocalLengthKind.EQUIVALENT:
+                focal_length = equivalent_focal_length
+            else:
+                raise ValueError(
+                    f"Invalid focal length choice: {self.focal_length_choice}"
+                )
+
+            camera = build_camera(
+                np.array(noises, dtype=object)[np.array(tels) == tel_id][0],
+                telescope_description,
+                telescope,
+                frame=CameraFrame(focal_length=focal_length),
+            )
+
+            tel_descriptions[tel_id] = TelescopeDescription(
+                name=telescope.name,
+                optics=optics,
+                camera=camera,
+            )
+
+            tel_idx = np.where(header["tel_id"] == tel_id)[0][0]
+            self.telescope_indices_original[tel_id] = tel_idx
+            tel_positions[tel_id] = header["tel_pos"][tel_idx] * u.m
+
+        name = self.file_.global_meta.get(b"ARRAY_CONFIG_NAME", b"MonteCarloArray")
+        subarray = SubarrayDescription(
+            name=name.decode(),
+            tel_positions=tel_positions,
+            tel_descriptions=tel_descriptions,
+            reference_location=_location_from_meta(self.file_.global_meta),
+        )
+
+        self.n_telescopes_original = len(subarray)
+
+        if self.allowed_tels:
+            subarray = subarray.select_subarray(self.allowed_tels)
+
+        return subarray
 
     def _get_pixels_status(self, tel_id):
         tel = self.file_.telescope_descriptions[tel_id]
@@ -1018,17 +1020,24 @@ class SimTelEventSource(EventSource):
                 pedestal = cam_mon["pedestal"] / cam_mon["n_ped_slices"]
                 dc_to_pe = array_event["laser_calibrations"][tel_id]["calib"]
 
+                gain_selector = ThresholdGainSelector()
                 r1_waveform, selected_gain_channel = apply_simtel_r1_calibration(
                     adc_samples,
                     pedestal,
                     dc_to_pe,
-                    0.0,
+                    gain_selector,
                     1.0,
                     0.0,
                 )
 
-                diff_traces = deconvolve(r1_waveform, 0.0, 4, 1.0)
-                sel_samples.append(np.sum(diff_traces[:, 4:16], axis=-1))
+                if np.shape(r1_waveform)[0] == 1764:
+                    diff_traces = deconvolve(r1_waveform, 0.0, 1, 1.0)
+                else:
+                    b, a = signal.butter(8, 0.2)
+                    s = signal.filtfilt(b, a, r1_waveform, method="gust")
+                    diff_traces = deconvolve(s, 0.0, 1, 1.0)
+                # sel_samples.append(np.sum(diff_traces[:, 1:10], axis=-1))
+                sel_samples.append(diff_traces[:, 12])
                 tel_ids.append(tel_id)
 
             if counter > 10000:
@@ -1037,7 +1046,7 @@ class SimTelEventSource(EventSource):
         noises = []
         telescopes = []
         for tel in np.unique(tel_ids):
-            tel_samples = np.array(sel_samples)[np.array(tel_ids) == tel]
+            tel_samples = np.array(sel_samples, dtype=object)[np.array(tel_ids) == tel]
 
             noises.append(np.std(tel_samples, axis=0))
             telescopes.append(tel)
