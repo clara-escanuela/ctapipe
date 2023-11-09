@@ -1040,13 +1040,12 @@ class SimTelEventSource(EventSource):
                 sel_samples.append(diff_traces[:, 12])
                 tel_ids.append(tel_id)
 
-            if counter > 10000:
-                break
-
         noises = []
         telescopes = []
         for tel in np.unique(tel_ids):
-            tel_samples = np.array(sel_samples, dtype=object)[np.array(tel_ids) == tel]
+            tel_samples = np.array(sel_samples, dtype=np.float64)[
+                np.array(tel_ids) == tel
+            ]
 
             noises.append(np.std(tel_samples, axis=0))
             telescopes.append(tel)
