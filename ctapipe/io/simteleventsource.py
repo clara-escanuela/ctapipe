@@ -981,10 +981,13 @@ class SimTelEventSource(EventSource):
 
     def _get_noise(self):
         pseudo_event_id = 0
-        sel_samples = []
-        tel_ids = []
 
+        tel_ids = []
+        a = np.array([[0.0] * 1764] * 14)
+        b = np.array([[0.0] * 1764] * 14)
+        len_a = np.array([0] * 14)
         for counter, array_event in enumerate(self.file_):
+
             event_id = array_event.get("event_id", 0)
             if event_id == 0:
                 pseudo_event_id -= 1
@@ -993,6 +996,7 @@ class SimTelEventSource(EventSource):
             obs_id = self.file_.header["run"]
 
             trigger = self._fill_trigger_info(array_event)
+
             if trigger.event_type == EventType.SUBARRAY:
                 shower = self._fill_simulated_event_information(array_event)
             else:
@@ -1037,17 +1041,19 @@ class SimTelEventSource(EventSource):
                     s = signal.filtfilt(b, a, r1_waveform, method="gust")
                     diff_traces = deconvolve(s, 0.0, 1, 1.0)
                 # sel_samples.append(np.sum(diff_traces[:, 1:10], axis=-1))
-                sel_samples.append(diff_traces[:, 12])
+
+                a[tel_id - 1] = a[tel_id - 1] + np.array(diff_traces[:, 2]) ** 2
+                b[tel_id - 1] = b[tel_id - 1] + np.array(diff_traces[:, 2])
+                len_a[tel_id - 1] = len_a[tel_id - 1] + 1
                 tel_ids.append(tel_id)
 
         noises = []
         telescopes = []
         for tel in np.unique(tel_ids):
-            tel_samples = np.array(sel_samples, dtype=np.float64)[
-                np.array(tel_ids) == tel
-            ]
-
-            noises.append(np.std(tel_samples, axis=0))
+            ai = a[tel - 1]
+            bi = b[tel - 1]
+            noise = np.sqrt(ai / len_a[tel - 1] - bi**2 / len_a[tel - 1] ** 2)
+            noises.append(noise)
             telescopes.append(tel)
 
         return telescopes, noises
