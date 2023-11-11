@@ -265,6 +265,11 @@ class TimeCleaner(WaveformCleaner):
         help="If set to 'False', the iteration steps in 2) are skipped and"
         "normal TailcutCleaning is used.",
     ).tag(config=True)
+    neighbours = BoolTelescopeParameter(
+        default_value=False,
+        help="If set to 'False', the iteration steps in 2) are skipped and"
+        "normal TailcutCleaning is used.",
+    ).tag(config=True)
 
     def __call__(
         self, tel_id: int, waveform: np.ndarray, broken_pixels: np.ndarray = None
@@ -288,6 +293,7 @@ class TimeCleaner(WaveformCleaner):
             shift=self.shift.tel[tel_id],
             n_norm=self.n_norm.tel[tel_id],
             weight=self.weight.tel[tel_id],
+            neighbours=self.neighbours.tel[tel_id],
         )
 
         return mask
