@@ -156,7 +156,7 @@ def time_clustering(
 
     if neighbours:
         pixels_above_boundary_thresh = all_snrs >= 5
-        pixels_above_picture_thresh = all_snrs >= 10
+        pixels_above_picture_thresh = all_snrs >= 7
 
         mask_in_loop = np.array([])
         for i in range(10):
