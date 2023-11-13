@@ -156,10 +156,9 @@ def time_clustering(
 
     if neighbours:
         pixels_above_boundary_thresh = all_snrs >= 5
-        pixels_above_picture_thresh = all_snrs >= 10
-        pixels_mask_neighbour = all_snrs > 4
+        pixels_above_picture_thresh = all_snrs >= 8
 
-        mask = mask | (dilate(geom, mask) & pixels_mask_neighbour)
+        mask = mask | (dilate(geom, mask) & pixels_above_boundary_thresh)
         mask_in_loop = np.array([])
         for i in range(10):
             # while (not np.array_equal(mask, mask_in_loop) and ):
