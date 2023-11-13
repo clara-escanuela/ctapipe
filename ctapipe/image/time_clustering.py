@@ -192,7 +192,6 @@ def time_clustering(
             pixels_with_picture_neighbors = geom.neighbor_matrix_sparse.dot(
                 pixels_above_picture_thresh
             )
-
             mask = mask | (
                 pixels_above_boundary_thresh
                 & (pixels_with_picture_neighbors | pixels_with_boundary_neighbors)
