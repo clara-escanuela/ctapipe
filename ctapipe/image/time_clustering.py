@@ -157,7 +157,13 @@ def time_clustering(
     if neighbours:
         pixels_above_boundary_thresh = all_snrs >= 5
         pixels_above_picture_thresh = all_snrs >= 10
-
+        number_of_neighbors_above_picture = geom.neighbor_matrix_sparse.dot(
+            pixels_above_picture_thresh
+        )
+        pixels_in_picture = pixels_above_picture_thresh & (
+            number_of_neighbors_above_picture >= 1
+        )
+        mask = mask | pixels_in_picture
         mask = mask | (dilate(geom, mask) & pixels_above_boundary_thresh)
         mask_in_loop = np.array([])
         for i in range(10):
