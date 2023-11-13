@@ -157,26 +157,26 @@ def time_clustering(
     if neighbours:
         pixels_above_boundary_thresh = all_snrs >= 5
         pixels_above_picture_thresh = all_snrs >= 10
-        number_of_neighbors_above_picture = geom.neighbor_matrix_sparse.dot(
-            pixels_above_boundary_thresh
-        )
-        pixels_in_picture = pixels_above_picture_thresh & (
-            number_of_neighbors_above_picture >= 3
-        )
-        mask = mask | pixels_in_picture
-        mask = mask | (dilate(geom, mask) & pixels_above_boundary_thresh)
+
+        mask = mask | (dilate(geom, mask) & pixels_above_picture_thresh)
         mask_in_loop = np.array([])
         for i in range(10):
             # while (not np.array_equal(mask, mask_in_loop) and ):
             mask_in_loop = mask
             pixels_with_boundary_neighbors = geom.neighbor_matrix_sparse.dot(mask)
-            pixels_with_picture_neighbors = geom.neighbor_matrix_sparse.dot(
-                pixels_above_picture_thresh
+            number_of_neighbors_above_picture = geom.neighbor_matrix_sparse.dot(
+                pixels_above_boundary_thresh
             )
+            pixels_in_picture = pixels_above_picture_thresh & (
+                number_of_neighbors_above_picture >= 2
+            )
+            # pixels_with_picture_neighbors = geom.neighbor_matrix_sparse.dot(
+            #    pixels_above_picture_thresh
+            # )
 
             mask = mask | (
                 pixels_above_boundary_thresh
-                & (pixels_with_picture_neighbors | pixels_with_boundary_neighbors)
+                & (pixels_in_picture | pixels_with_boundary_neighbors)
             )
 
             if np.array_equal(mask, mask_in_loop):
