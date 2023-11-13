@@ -163,7 +163,7 @@ def time_clustering(
 
     if neighbours:
         pixels_above_boundary_thresh = all_snrs >= 5
-        pixels_above_picture_thresh = all_snrs >= 10
+        pixels_above_picture_thresh = all_snrs >= 8
 
         number_of_neighbors_above_picture = geom.neighbor_matrix_sparse.dot(
             pixels_above_boundary_thresh
