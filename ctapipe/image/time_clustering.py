@@ -165,13 +165,21 @@ def time_clustering(
         pixels_above_boundary_thresh = all_snrs >= 5
         pixels_above_picture_thresh = all_snrs >= 7
 
+        number_of_neighbors_above_boundary = geom.neighbor_matrix_sparse.dot(
+            pixels_above_boundary_thresh
+        )
         number_of_neighbors_above_picture = geom.neighbor_matrix_sparse.dot(
             pixels_above_boundary_thresh
         )
         pixels_in_picture = pixels_above_picture_thresh & (
-            number_of_neighbors_above_picture >= 2
+            number_of_neighbors_above_boundary >= 2
         )
-        mask = mask | pixels_in_picture
+        pixels_in_boundary = (
+            pixels_above_picture_thresh
+            & (number_of_neighbors_above_picture >= 1)
+            & (number_of_neighbors_above_boundary >= 1)
+        )
+        mask = mask | pixels_in_picture | pixels_in_boundary
         mask = mask | (dilate(geom, mask) & pixels_above_picture_thresh)
 
         pixels_above_picture_thresh = all_snrs >= 10
