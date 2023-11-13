@@ -57,6 +57,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
     y_pos = np.array(geometry.pix_y)[:, None] * arr_ones
     pix_id = np.array(geometry.pix_id)[:, None] * arr_ones
 
+    hard_cut = 0.3
     time = np.array([])
     x = np.array([])
     y = np.array([])
@@ -67,7 +68,9 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
         ctrace = dtraces[i]
         local_max_pos = find_peaks(ctrace, height=0.2 * np.max(ctrace))[0]
         integral = ctrace[local_max_pos]
-        pos = local_max_pos[(np.array(integral) > cut * noise[i])]
+        pos = local_max_pos[
+            (np.array(integral) > cut * noise[i]) & (np.array(integral) > hard_cut)
+        ]
 
         if i not in np.where(broken_pixels == True)[0]:
             x = np.append(x, x_pos[i][pos])
@@ -78,7 +81,11 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
             snr = np.append(
                 snr,
                 list(
-                    np.array(integral)[np.array(integral) > cut * noise[i]] / noise[i]
+                    np.array(integral)[
+                        (np.array(integral) > cut * noise[i])
+                        & (np.array(integral) > hard_cut)
+                    ]
+                    / noise[i]
                 ),
             )
 
@@ -156,7 +163,7 @@ def time_clustering(
 
     if neighbours:
         pixels_above_boundary_thresh = all_snrs >= 5
-        pixels_above_picture_thresh = all_snrs >= 8
+        pixels_above_picture_thresh = all_snrs >= 10
 
         mask = mask | (dilate(geom, mask) & pixels_above_picture_thresh)
         mask_in_loop = np.array([])
@@ -168,7 +175,7 @@ def time_clustering(
                 pixels_above_boundary_thresh
             )
             pixels_in_picture = pixels_above_picture_thresh & (
-                number_of_neighbors_above_picture >= 2
+                number_of_neighbors_above_picture >= 1
             )
             # pixels_with_picture_neighbors = geom.neighbor_matrix_sparse.dot(
             #    pixels_above_picture_thresh
