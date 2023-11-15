@@ -764,12 +764,15 @@ class SimTelEventSource(EventSource):
         tel_positions = {}  # tel_id : TelescopeDescription
 
         self.telescope_indices_original = {}
-        tels, noises = self._get_noise()
-
+        i = 0
+        n_tels_ = len(telescope_descriptions.keys())
         for tel_id, telescope_description in telescope_descriptions.items():
             cam_settings = telescope_description["camera_settings"]
 
             n_pixels = cam_settings["n_pixels"]
+            if i == 0:
+                tels, noises = self._get_noise(n_pixels, n_tels_)
+            i += 1
             mirror_area = u.Quantity(cam_settings["mirror_area"], u.m**2)
 
             equivalent_focal_length = u.Quantity(cam_settings["focal_length"], u.m)
@@ -979,13 +982,13 @@ class SimTelEventSource(EventSource):
                 array_dec=u.Quantity(dec, u.rad),
             )
 
-    def _get_noise(self):
+    def _get_noise(self, n_pixels, n_tels):
         pseudo_event_id = 0
 
         tel_ids = []
-        a = np.array([[0.0] * 1764] * 14)
-        b = np.array([[0.0] * 1764] * 14)
-        len_a = np.array([0] * 14)
+        a = np.array([[0.0] * n_pixels] * n_tels)
+        b = np.array([[0.0] * n_pixels] * n_tels)
+        len_a = np.array([0] * n_tels)
         for counter, array_event in enumerate(self.file_):
 
             event_id = array_event.get("event_id", 0)
@@ -1037,8 +1040,8 @@ class SimTelEventSource(EventSource):
                 if np.shape(r1_waveform)[0] == 1764:
                     diff_traces = deconvolve(r1_waveform, 0.0, 1, 1.0)
                 else:
-                    b, a = signal.butter(8, 0.2)
-                    s = signal.filtfilt(b, a, r1_waveform, method="gust")
+                    b_, a_ = signal.butter(8, 0.4)
+                    s = signal.filtfilt(b_, a_, r1_waveform, method="gust")
                     diff_traces = deconvolve(s, 0.0, 1, 1.0)
                 # sel_samples.append(np.sum(diff_traces[:, 1:10], axis=-1))
 
