@@ -1039,8 +1039,13 @@ class SimTelEventSource(EventSource):
 
                 if np.shape(r1_waveform)[0] == 1764:
                     diff_traces = deconvolve(r1_waveform, 0.0, 1, 1.0)
+
                 else:
-                    b_, a_ = signal.butter(8, 0.4)
+                    if np.shape(r1_waveform)[0] == 2048:
+                        dd_ = 0.2
+                    else:
+                        dd_ = 0.8
+                    b_, a_ = signal.butter(8, dd_)
                     s = signal.filtfilt(b_, a_, r1_waveform, method="gust")
                     diff_traces = deconvolve(s, 0.0, 1, 1.0)
                 # sel_samples.append(np.sum(diff_traces[:, 1:10], axis=-1))

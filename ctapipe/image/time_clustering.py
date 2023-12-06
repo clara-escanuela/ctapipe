@@ -142,7 +142,7 @@ def time_clustering(
     pix_x = x / (d_scale)
     pix_y = y / (d_scale)
 
-    X = np.column_stack((time / t_scale, pix_x, pix_y))
+    X = np.column_stack((time / t_scale, pix_x, pix_y, 1 / snrs))
 
     if weight == True:
         db = DBSCAN(eps=dd, min_samples=n_min).fit(
@@ -184,7 +184,7 @@ def time_clustering(
     for _ in range(int(rows)):
         mask = dilate(geom, mask)
 
-    return mask, ret_labels
+    return mask, labels
 
 
 """
