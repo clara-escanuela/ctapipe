@@ -16,16 +16,18 @@ __all__ = [
     "tailcuts_clean",
     "dilate",
     "mars_cleaning_1st_pass",
+    "time_clustering2",
     "fact_image_cleaning",
     "apply_time_delta_cleaning",
     "apply_time_average_cleaning",
     "time_constrained_clean",
     "ImageCleaner",
     "TailcutsImageCleaner",
+    "TimeImageCleaner2"
 ]
 
 from abc import abstractmethod
-
+from sklearn.cluster import DBSCAN
 import numpy as np
 
 from ..core import TelescopeComponent
@@ -109,6 +111,56 @@ def tailcuts_clean(
         return (pixels_above_boundary & pixels_with_picture_neighbors) | (
             pixels_in_picture & pixels_with_boundary_neighbors
         )
+
+def time_clustering2(
+    geom,
+    image,
+    time,
+    minpts=4,
+    eps=1.0,
+    time_scale_ns=4.0,
+    space_scale_m=0.125,
+    hard_cut_pe=4,
+    n_dilate=True,
+):
+
+    precut_mask = image > hard_cut_pe
+    arr = np.zeros(len(image), dtype=float)
+    arr[~precut_mask] = -1
+
+    pix_x = geom.pix_x.value[precut_mask] / space_scale_m
+    pix_y = geom.pix_y.value[precut_mask] / space_scale_m
+
+    X = np.column_stack((time[precut_mask] / time_scale_ns, pix_x, pix_y))
+    labels = DBSCAN(eps=eps, min_samples=minpts).fit_predict(X, sample_weight=1 / (1 + np.exp(-(image[precut_mask] + 2.0) / 4.0)))
+
+    # no_clusters = len(np.unique(labels))-1  # Could be used for gh separation
+
+    y = np.array(arr[(arr == 0)])
+    y[(labels == -1)] = -1
+    arr[arr == 0] = y
+    mask = arr == 0  # we keep these events
+
+    pixels_above_boundary_thresh = (image >= 3)
+    if n_dilate:
+        for i in range(0, 2):
+            mask = (dilate(geom, mask) & pixels_above_boundary_thresh) | mask
+
+    high_charge = 6
+    neighs = 1
+    number_of_neighbors = geom.neighbor_matrix_sparse.dot(
+        (image >= high_charge)
+    )
+
+    mask = mask | ((image >= high_charge) & (number_of_neighbors>=neighs))
+
+    #for label in labels[labels != -1]:
+    #pixels_above_time_thresh = np.abs(time - np.average(time[labels == label], weights = snrs[labels == label]**2)) < 20
+    #if dilate:
+    #    for i in range(0, 2):
+    #        mask = (dilate(geom, mask) & pixels_above_boundary_thresh) | mask
+
+    return mask
 
 
 def mars_cleaning_1st_pass(
@@ -531,6 +583,41 @@ class TailcutsImageCleaner(ImageCleaner):
             keep_isolated_pixels=self.keep_isolated_pixels.tel[tel_id],
         )
 
+class TimeImageCleaner2(ImageCleaner):
+    """
+    Clean images using the time clustering cleaning method
+    """
+
+    space_scale_m = FloatTelescopeParameter(
+        default_value=0.25, help="Pixel space scaling parameter in m"
+    ).tag(config=True)
+    time_scale_ns = FloatTelescopeParameter(
+        default_value=4.0, help="Time scale parameter in ns"
+    ).tag(config=True)
+    minpts = IntTelescopeParameter(
+        default_value=5, help="minimum number of points to form a cluster"
+    ).tag(config=True)
+    eps = FloatTelescopeParameter(
+        default_value=1.0, help="minimum distance in DBSCAN"
+    ).tag(config=True)
+    hard_cut_pe = FloatTelescopeParameter(
+        default_value=2.5, help="Hard cut in the number of pe"
+    ).tag(config=True)
+
+    def __call__(
+        self, tel_id: int, image: np.ndarray, arrival_times=None
+    ) -> np.ndarray:
+        """Apply HESS image cleaning. see ImageCleaner.__call__()"""
+        return time_clustering2(
+            geom=self.subarray.tel[tel_id].camera.geometry,
+            image=image,
+            time=arrival_times,
+            eps=self.eps.tel[tel_id],
+            space_scale_m=self.space_scale_m.tel[tel_id],
+            time_scale_ns=self.time_scale_ns.tel[tel_id],
+            minpts=self.minpts.tel[tel_id],
+            hard_cut_pe=self.hard_cut_pe.tel[tel_id],
+        )
 
 class MARSImageCleaner(TailcutsImageCleaner):
     """
