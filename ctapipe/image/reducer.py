@@ -209,7 +209,7 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         #          'dilate' until no new pixels were added.
         mask_copy = mask.copy()
         while (
-            not np.array_equal(mask, mask_in_loop)
+            not np.array_equal(mask_copy, mask_in_loop)
             and self.do_boundary_dilation.tel[tel_id]
         ):
             mask_in_loop = mask_copy
