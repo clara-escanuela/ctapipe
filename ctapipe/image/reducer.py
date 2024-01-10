@@ -215,7 +215,7 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
             mask_in_loop = mask_copy
             mask_copy = dilate(camera_geom, mask_copy) & pixels_above_boundary_thresh
 
-        mask_copy = apply_time_delta_cleaning(geom, mask_copy, dl1.peak_times, self.min_number_neighbors.tel[tel_id], self.time_limit.tel[tel_id])
+        mask_copy = apply_time_delta_cleaning(camera_geom, mask_copy, dl1.peak_times, self.min_number_neighbors.tel[tel_id], self.time_limit.tel[tel_id])
         mask = mask | mask_copy
 
         # 3) Step: Adding Pixels with 'dilate' to get more conservative.
