@@ -134,7 +134,7 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
     ).tag(config=True)
 
     do_boundary_dilation = BoolTelescopeParameter(
-        default_value=True,
+        default_value=False,
         help="If set to 'False', the iteration steps in 2) are skipped and"
         "normal TailcutCleaning is used.",
     ).tag(config=True)
@@ -249,7 +249,7 @@ class TTailCutsDataVolumeReducer(DataVolumeReducer):
     ).tag(config=True)
 
     do_boundary_dilation = BoolTelescopeParameter(
-        default_value=True,
+        default_value=False,
         help="If set to 'False', the iteration steps in 2) are skipped and"
         "normal TailcutCleaning is used.",
     ).tag(config=True)
@@ -351,7 +351,7 @@ class TimeDataVolumeReducer(DataVolumeReducer):
         default_value=0, help="Number of how many times to dilate at the end."
     ).tag(config=True)
     do_boundary_dilation = BoolTelescopeParameter(
-        default_value=True,
+        default_value=False,
         help="If set to 'False', the iteration steps in 2) are skipped and"
              "normal TailcutCleaning is used.",
     ).tag(config=True)
@@ -414,7 +414,7 @@ class TimeDataVolumeReducer(DataVolumeReducer):
 
         if self.do_boundary_dilation.tel[tel_id]:
             for i in range(0, 2):
-                mask = (dilate(geom, mask) & self.pixels_above_boundary_thresh.tel[tel_id]) | mask
+                mask = (dilate(camera_geom, mask) & self.pixels_above_boundary_thresh.tel[tel_id]) | mask
 
         for _ in range(self.n_end_dilates.tel[tel_id]):
             mask = dilate(camera_geom, mask)
