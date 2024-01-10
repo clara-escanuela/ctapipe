@@ -282,7 +282,6 @@ def apply_time_delta_cleaning(
     pixels_to_keep[pixels_to_keep] &= enough_neighbors
     return pixels_to_keep
 
-
 def apply_time_average_cleaning(
     geom, mask, image, arrival_times, picture_thresh, time_limit
 ):

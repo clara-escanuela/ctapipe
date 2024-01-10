@@ -15,7 +15,7 @@ from ctapipe.core.traits import (
     TelescopeParameter,
 )
 from ctapipe.image.cleaning import TailcutsImageCleaner, TimeImageCleaner2, TimeConstrainedImageCleaner, FACTImageCleaner
-from ctapipe.image.cleaning import dilate
+from ctapipe.image.cleaning import dilate, apply_time_delta_cleaning
 from ctapipe.image.extractor import ImageExtractor
 
 __all__ = ["DataVolumeReducer", "NullDataVolumeReducer", "TailCutsDataVolumeReducer"]
@@ -139,6 +139,14 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         "normal TailcutCleaning is used.",
     ).tag(config=True)
 
+    min_number_neighbors = IntTelescopeParameter(
+        default_value=1, help="Number of how many times to dilate at the end."
+    ).tag(config=True)
+
+    time_limit = FloatTelescopeParameter(
+        default_value=5.0, help="Number of how many times to dilate at the end."
+    ).tag(config=True)
+
     def __init__(
         self,
         subarray,
@@ -199,12 +207,16 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         # 2) Step: Add iteratively all pixels with Signal
         #          S > boundary_thresh with ctapipe module
         #          'dilate' until no new pixels were added.
+        mask_copy = mask.copy()
         while (
             not np.array_equal(mask, mask_in_loop)
             and self.do_boundary_dilation.tel[tel_id]
         ):
-            mask_in_loop = mask
-            mask = dilate(camera_geom, mask) & pixels_above_boundary_thresh
+            mask_in_loop = mask_copy
+            mask_copy = dilate(camera_geom, mask_copy) & pixels_above_boundary_thresh
+
+        mask_copy = apply_time_delta_cleaning(geom, mask_copy, dl1.peak_times, self.min_number_neighbors.tel[tel_id], self.time_limit.tel[tel_id])
+        mask = mask | mask_copy
 
         # 3) Step: Adding Pixels with 'dilate' to get more conservative.
         for _ in range(self.n_end_dilates.tel[tel_id]):
