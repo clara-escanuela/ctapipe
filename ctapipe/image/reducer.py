@@ -207,16 +207,18 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         # 2) Step: Add iteratively all pixels with Signal
         #          S > boundary_thresh with ctapipe module
         #          'dilate' until no new pixels were added.
-        mask_copy = mask.copy()
-        while (
-            not np.array_equal(mask_copy, mask_in_loop)
-            and self.do_boundary_dilation.tel[tel_id]
-        ):
-            mask_in_loop = mask_copy
-            mask_copy = dilate(camera_geom, mask_copy) & pixels_above_boundary_thresh
 
-        mask_copy = apply_time_delta_cleaning(camera_geom, mask_copy, dl1.peak_time, self.min_number_neighbors.tel[tel_id], self.time_limit.tel[tel_id])
-        mask = mask | mask_copy
+        if self.do_boundary_dilation.tel[tel_id]:
+            mask_copy = mask.copy()
+            while (
+                not np.array_equal(mask_copy, mask_in_loop)
+                and self.do_boundary_dilation.tel[tel_id]
+            ):
+                mask_in_loop = mask_copy
+                mask_copy = dilate(camera_geom, mask_copy) & pixels_above_boundary_thresh
+
+            mask_copy = apply_time_delta_cleaning(camera_geom, mask_copy, dl1.peak_time, self.min_number_neighbors.tel[tel_id], self.time_limit.tel[tel_id])
+            mask = mask | mask_copy
 
         # 3) Step: Adding Pixels with 'dilate' to get more conservative.
         for _ in range(self.n_end_dilates.tel[tel_id]):
