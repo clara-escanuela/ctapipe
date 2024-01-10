@@ -131,20 +131,16 @@ def time_clustering2(
     pix_x = geom.pix_x.value[precut_mask] / space_scale_m
     pix_y = geom.pix_y.value[precut_mask] / space_scale_m
 
-    X = np.column_stack((time[precut_mask] / time_scale_ns, pix_x, pix_y))
-    labels = DBSCAN(eps=eps, min_samples=minpts).fit_predict(X, sample_weight=1 / (1 + np.exp(-(image[precut_mask] + 2.0) / 4.0)))
+    if len(time[precut_mask]) == 0:
+        mask = np.zeros(len(time)) != 0
+    else:
+        X = np.column_stack((time[precut_mask] / time_scale_ns, pix_x, pix_y))
+        labels = DBSCAN(eps=eps, min_samples=minpts).fit_predict(X, sample_weight=1 / (1 + np.exp(-(image[precut_mask] + 2.0) / 4.0)))
 
-    # no_clusters = len(np.unique(labels))-1  # Could be used for gh separation
-
-    y = np.array(arr[(arr == 0)])
-    y[(labels == -1)] = -1
-    arr[arr == 0] = y
-    mask = arr == 0  # we keep these events
-
-    pixels_above_boundary_thresh = (image >= 3)
-    if n_dilate:
-        for i in range(0, 2):
-            mask = (dilate(geom, mask) & pixels_above_boundary_thresh) | mask
+        y = np.array(arr[(arr == 0)])
+        y[(labels == -1)] = -1
+        arr[arr == 0] = y
+        mask = arr == 0  # we keep these events
 
     high_charge = 6
     neighs = 1
@@ -153,12 +149,6 @@ def time_clustering2(
     )
 
     mask = mask | ((image >= high_charge) & (number_of_neighbors>=neighs))
-
-    #for label in labels[labels != -1]:
-    #pixels_above_time_thresh = np.abs(time - np.average(time[labels == label], weights = snrs[labels == label]**2)) < 20
-    #if dilate:
-    #    for i in range(0, 2):
-    #        mask = (dilate(geom, mask) & pixels_above_boundary_thresh) | mask
 
     return mask
 
