@@ -14,7 +14,7 @@ from ctapipe.core.traits import (
     FloatTelescopeParameter,
     TelescopeParameter,
 )
-from ctapipe.image.cleaning import TailcutsImageCleaner, TimeImageCleaner2
+from ctapipe.image.cleaning import TailcutsImageCleaner, TimeImageCleaner2, TimeConstrainedImageCleaner, FACTImageCleaner
 from ctapipe.image.cleaning import dilate
 from ctapipe.image.extractor import ImageExtractor
 
@@ -411,7 +411,7 @@ class FACTDataVolumeReducer(DataVolumeReducer):
         # 1) Step: TailcutCleaning at first
         mask = self.cleaner(tel_id, dl1.image, dl1.peak_time)
         pixels_above_boundary_thresh = (
-            dl1.image >= cleaner.boundary_threshold_pe.tel[tel_id]
+            dl1.image >= self.cleaner.boundary_threshold_pe.tel[tel_id]
         )
         mask_in_loop = np.array([])
         # 2) Step: Add iteratively all pixels with Signal
