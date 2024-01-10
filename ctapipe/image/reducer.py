@@ -11,6 +11,7 @@ from ctapipe.core.traits import (
     BoolTelescopeParameter,
     ComponentName,
     IntTelescopeParameter,
+    FloatTelescopeParameter,
     TelescopeParameter,
 )
 from ctapipe.image.cleaning import TailcutsImageCleaner, TimeImageCleaner2
