@@ -211,7 +211,7 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
 
         return mask
 
-class TailCutsDataVolumeReducer(DataVolumeReducer):
+class TTailCutsDataVolumeReducer(DataVolumeReducer):
     """
     Reduce the time integrated shower image in 3 Steps:
 
