@@ -139,10 +139,6 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         "normal TailcutCleaning is used.",
     ).tag(config=True)
 
-    min_number_neighbors = IntTelescopeParameter(
-        default_value=1, help="Number of how many times to dilate at the end."
-    ).tag(config=True)
-
     time_limit = FloatTelescopeParameter(
         default_value=5.0, help="Number of how many times to dilate at the end."
     ).tag(config=True)
