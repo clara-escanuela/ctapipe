@@ -10,15 +10,20 @@ from ctapipe.core import TelescopeComponent
 from ctapipe.core.traits import (
     BoolTelescopeParameter,
     ComponentName,
-    IntTelescopeParameter,
     FloatTelescopeParameter,
+    IntTelescopeParameter,
     TelescopeParameter,
 )
-from ctapipe.image.cleaning import TailcutsImageCleaner, TimeImageCleaner2, TimeConstrainedImageCleaner, FACTImageCleaner
-from ctapipe.image.cleaning import dilate, apply_time_delta_cleaning
+from ctapipe.image.cleaning import (
+    ImageCleaner,
+    TimeImageCleaner2,
+    apply_time_delta_cleaning,
+    dilate,
+)
 from ctapipe.image.extractor import ImageExtractor
 
 __all__ = ["DataVolumeReducer", "NullDataVolumeReducer", "TailCutsDataVolumeReducer"]
+
 
 class DataVolumeReducer(TelescopeComponent):
     """
@@ -129,6 +134,12 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         help="Name of the ImageExtractor subclass to be used.",
     ).tag(config=True)
 
+    image_cleaning = TelescopeParameter(
+        trait=ComponentName(ImageCleaner, default_value="TailcutsImageCleaner"),
+        default_value="TailcutsImageCleaner",
+        help="Name of the ImageExtractor subclass to be used.",
+    ).tag(config=True)
+
     n_end_dilates = IntTelescopeParameter(
         default_value=1, help="Number of how many times to dilate at the end."
     ).tag(config=True)
@@ -148,7 +159,6 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         subarray,
         config=None,
         parent=None,
-        cleaner=None,
         image_extractor=None,
         **kwargs,
     ):
@@ -165,10 +175,11 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         """
         super().__init__(config=config, parent=parent, subarray=subarray, **kwargs)
 
-        if cleaner is None:
-            self.cleaner = TailcutsImageCleaner(parent=self, subarray=self.subarray)
-        else:
-            self.cleaner = cleaner
+        self.image_cleaners = {}
+        for (_, _, name) in self.image_cleaning:
+            self.image_cleaners[name] = ImageCleaner.from_name(
+                name, subarray=self.subarray, parent=self
+            )
 
         self.image_extractors = {}
         if image_extractor is None:
@@ -195,9 +206,10 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
         )
 
         # 1) Step: TailcutCleaning at first
-        mask = self.cleaner(tel_id, dl1.image)
+        cleaner = self.image_cleaners[self.image_cleaning.tel[tel_id]]
+        mask = cleaner(tel_id, dl1.image, dl1.peak_time)
         pixels_above_boundary_thresh = (
-            dl1.image >= self.cleaner.boundary_threshold_pe.tel[tel_id]
+            dl1.image >= cleaner.boundary_threshold_pe.tel[tel_id]
         )
         mask_in_loop = np.array([])
         # 2) Step: Add iteratively all pixels with Signal
@@ -211,9 +223,17 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
                 and self.do_boundary_dilation.tel[tel_id]
             ):
                 mask_in_loop = mask_copy
-                mask_copy = dilate(camera_geom, mask_copy) & pixels_above_boundary_thresh
+                mask_copy = (
+                    dilate(camera_geom, mask_copy) & pixels_above_boundary_thresh
+                )
 
-            mask_copy = apply_time_delta_cleaning(camera_geom, mask_copy, dl1.peak_time, self.cleaner.min_picture_neighbors.tel[tel_id], self.time_limit.tel[tel_id])
+            mask_copy = apply_time_delta_cleaning(
+                camera_geom,
+                mask_copy,
+                dl1.peak_time,
+                self.cleaner.min_picture_neighbors.tel[tel_id],
+                self.time_limit.tel[tel_id],
+            )
             mask = mask | mask_copy
 
         # 3) Step: Adding Pixels with 'dilate' to get more conservative.
@@ -222,223 +242,6 @@ class TailCutsDataVolumeReducer(DataVolumeReducer):
 
         return mask
 
-class TimeConstrainedDataVolumeReducer(DataVolumeReducer):
-    """
-    Reduce the time integrated shower image in 3 Steps:
-
-    1) Select pixels with tailcuts_clean.
-    2) Add iteratively all pixels with Signal S >= boundary_thresh
-       with ctapipe module dilate until no new pixels were added.
-    3) Adding new pixels with dilate to get more conservative.
-
-    Attributes
-    ----------
-    image_extractor_type: String
-        Name of the image_extractor to be used.
-    n_end_dilates: IntTelescopeParameter
-        Number of how many times to dilate at the end.
-    do_boundary_dilation: BoolTelescopeParameter
-        If set to 'False', the iteration steps in 2) are skipped and
-        normal TailcutCleaning is used.
-    """
-
-    image_extractor_type = TelescopeParameter(
-        trait=ComponentName(ImageExtractor, default_value="NeighborPeakWindowSum"),
-        default_value="NeighborPeakWindowSum",
-        help="Name of the ImageExtractor subclass to be used.",
-    ).tag(config=True)
-
-    n_end_dilates = IntTelescopeParameter(
-        default_value=1, help="Number of how many times to dilate at the end."
-    ).tag(config=True)
-
-    do_boundary_dilation = BoolTelescopeParameter(
-        default_value=False,
-        help="If set to 'False', the iteration steps in 2) are skipped and"
-        "normal TailcutCleaning is used.",
-    ).tag(config=True)
-
-    def __init__(
-        self,
-        subarray,
-        config=None,
-        parent=None,
-        cleaner=None,
-        image_extractor=None,
-        **kwargs,
-    ):
-        """
-        Parameters
-        ----------
-        subarray: ctapipe.instrument.SubarrayDescription
-            Description of the subarray
-        config: traitlets.loader.Config
-            Configuration specified by config file or cmdline arguments.
-            Used to set traitlet values.
-            Set to None if no configuration to pass.
-        kwargs
-        """
-        super().__init__(config=config, parent=parent, subarray=subarray, **kwargs)
-
-        if cleaner is None:
-            self.cleaner = TimeConstrainedImageCleaner(parent=self, subarray=self.subarray)
-        else:
-            self.cleaner = cleaner
-
-        self.image_extractors = {}
-        if image_extractor is None:
-            for (_, _, name) in self.image_extractor_type:
-                self.image_extractors[name] = ImageExtractor.from_name(
-                    name, subarray=self.subarray, parent=self
-                )
-        else:
-            name = image_extractor.__class__.__name__
-            self.image_extractor_type = [("type", "*", name)]
-            self.image_extractors[name] = image_extractor
-
-    def select_pixels(self, waveforms, tel_id=None, selected_gain_channel=None):
-        camera_geom = self.subarray.tel[tel_id].camera.geometry
-        # Pulse-integrate waveforms
-        extractor = self.image_extractors[self.image_extractor_type.tel[tel_id]]
-        # do not treat broken pixels in data volume reduction
-        broken_pixels = np.zeros(camera_geom.n_pixels, dtype=bool)
-        dl1: DL1CameraContainer = extractor(
-            waveforms,
-            tel_id=tel_id,
-            selected_gain_channel=selected_gain_channel,
-            broken_pixels=broken_pixels,
-        )
-
-        # 1) Step: TailcutCleaning at first
-        mask = self.cleaner(tel_id, dl1.image, dl1.peak_time)
-        pixels_above_boundary_thresh = (
-            dl1.image >= self.cleaner.boundary_threshold_pe.tel[tel_id]
-        )
-        mask_in_loop = np.array([])
-        # 2) Step: Add iteratively all pixels with Signal
-        #          S > boundary_thresh with ctapipe module
-        #          'dilate' until no new pixels were added.
-        while (
-            not np.array_equal(mask, mask_in_loop)
-            and self.do_boundary_dilation.tel[tel_id]
-        ):
-            mask_in_loop = mask
-            mask = dilate(camera_geom, mask) & pixels_above_boundary_thresh
-
-        # 3) Step: Adding Pixels with 'dilate' to get more conservative.
-        for _ in range(self.n_end_dilates.tel[tel_id]):
-            mask = dilate(camera_geom, mask)
-
-        return mask
-
-class FACTDataVolumeReducer(DataVolumeReducer):
-    """
-    Reduce the time integrated shower image in 3 Steps:
-
-    1) Select pixels with tailcuts_clean.
-    2) Add iteratively all pixels with Signal S >= boundary_thresh
-       with ctapipe module dilate until no new pixels were added.
-    3) Adding new pixels with dilate to get more conservative.
-
-    Attributes
-    ----------
-    image_extractor_type: String
-        Name of the image_extractor to be used.
-    n_end_dilates: IntTelescopeParameter
-        Number of how many times to dilate at the end.
-    do_boundary_dilation: BoolTelescopeParameter
-        If set to 'False', the iteration steps in 2) are skipped and
-        normal TailcutCleaning is used.
-    """
-
-    image_extractor_type = TelescopeParameter(
-        trait=ComponentName(ImageExtractor, default_value="NeighborPeakWindowSum"),
-        default_value="NeighborPeakWindowSum",
-        help="Name of the ImageExtractor subclass to be used.",
-    ).tag(config=True)
-
-    n_end_dilates = IntTelescopeParameter(
-        default_value=1, help="Number of how many times to dilate at the end."
-    ).tag(config=True)
-
-    do_boundary_dilation = BoolTelescopeParameter(
-        default_value=False,
-        help="If set to 'False', the iteration steps in 2) are skipped and"
-        "normal TailcutCleaning is used.",
-    ).tag(config=True)
-
-    def __init__(
-        self,
-        subarray,
-        config=None,
-        parent=None,
-        cleaner=None,
-        image_extractor=None,
-        **kwargs,
-    ):
-        """
-        Parameters
-        ----------
-        subarray: ctapipe.instrument.SubarrayDescription
-            Description of the subarray
-        config: traitlets.loader.Config
-            Configuration specified by config file or cmdline arguments.
-            Used to set traitlet values.
-            Set to None if no configuration to pass.
-        kwargs
-        """
-        super().__init__(config=config, parent=parent, subarray=subarray, **kwargs)
-
-        if cleaner is None:
-            self.cleaner = FACTImageCleaner(parent=self, subarray=self.subarray)
-        else:
-            self.cleaner = cleaner
-
-        self.image_extractors = {}
-        if image_extractor is None:
-            for (_, _, name) in self.image_extractor_type:
-                self.image_extractors[name] = ImageExtractor.from_name(
-                    name, subarray=self.subarray, parent=self
-                )
-        else:
-            name = image_extractor.__class__.__name__
-            self.image_extractor_type = [("type", "*", name)]
-            self.image_extractors[name] = image_extractor
-
-    def select_pixels(self, waveforms, tel_id=None, selected_gain_channel=None):
-        camera_geom = self.subarray.tel[tel_id].camera.geometry
-        # Pulse-integrate waveforms
-        extractor = self.image_extractors[self.image_extractor_type.tel[tel_id]]
-        # do not treat broken pixels in data volume reduction
-        broken_pixels = np.zeros(camera_geom.n_pixels, dtype=bool)
-        dl1: DL1CameraContainer = extractor(
-            waveforms,
-            tel_id=tel_id,
-            selected_gain_channel=selected_gain_channel,
-            broken_pixels=broken_pixels,
-        )
-
-        # 1) Step: TailcutCleaning at first
-        mask = self.cleaner(tel_id, dl1.image, dl1.peak_time)
-        pixels_above_boundary_thresh = (
-            dl1.image >= self.cleaner.boundary_threshold_pe.tel[tel_id]
-        )
-        mask_in_loop = np.array([])
-        # 2) Step: Add iteratively all pixels with Signal
-        #          S > boundary_thresh with ctapipe module
-        #          'dilate' until no new pixels were added.
-        while (
-            not np.array_equal(mask, mask_in_loop)
-            and self.do_boundary_dilation.tel[tel_id]
-        ):
-            mask_in_loop = mask
-            mask = dilate(camera_geom, mask) & pixels_above_boundary_thresh
-
-        # 3) Step: Adding Pixels with 'dilate' to get more conservative.
-        for _ in range(self.n_end_dilates.tel[tel_id]):
-            mask = dilate(camera_geom, mask)
-
-        return mask
 
 class TimeDataVolumeReducer(DataVolumeReducer):
     """
@@ -471,7 +274,7 @@ class TimeDataVolumeReducer(DataVolumeReducer):
     do_boundary_dilation = BoolTelescopeParameter(
         default_value=False,
         help="If set to 'False', the iteration steps in 2) are skipped and"
-             "normal TailcutCleaning is used.",
+        "normal TailcutCleaning is used.",
     ).tag(config=True)
     pixels_above_boundary_thresh = FloatTelescopeParameter(
         default_value=3.0, help="Boundary threshold"
@@ -532,7 +335,10 @@ class TimeDataVolumeReducer(DataVolumeReducer):
 
         if self.do_boundary_dilation.tel[tel_id]:
             for i in range(0, 2):
-                mask = (dilate(camera_geom, mask) & self.pixels_above_boundary_thresh.tel[tel_id]) | mask
+                mask = (
+                    dilate(camera_geom, mask)
+                    & self.pixels_above_boundary_thresh.tel[tel_id]
+                ) | mask
 
         for _ in range(self.n_end_dilates.tel[tel_id]):
             mask = dilate(camera_geom, mask)
