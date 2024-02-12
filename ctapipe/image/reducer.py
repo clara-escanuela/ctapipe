@@ -333,7 +333,7 @@ class TimeDataVolumeReducer(DataVolumeReducer):
 
         mask = self.cleaner(tel_id, dl1.image, dl1.peak_time)
 
-        if self.do_boundary_dilation.tel[tel_id]:
+        if (self.do_boundary_dilation.tel[tel_id]) & (any(mask)):
             for i in range(0, 2):
                 mask = (
                     (dilate(camera_geom, mask))
