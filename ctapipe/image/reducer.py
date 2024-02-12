@@ -335,6 +335,8 @@ class TimeDataVolumeReducer(DataVolumeReducer):
 
         if (self.do_boundary_dilation.tel[tel_id]) & (any(mask)):
             for i in range(0, 2):
+                print(mask)
+                print(dilate(camera_geom, mask))
                 mask = (
                     (dilate(camera_geom, mask))
                     & (self.pixels_above_boundary_thresh.tel[tel_id])
