@@ -26,15 +26,13 @@ class CameraDescription:
     """
 
     __slots__ = (
-        "noise",
         "name",
         "geometry",
         "readout",
     )
 
-    def __init__(self, noise, name, geometry: CameraGeometry, readout: CameraReadout):
+    def __init__(self, name, geometry: CameraGeometry, readout: CameraReadout):
 
-        self.noise = noise
         self.name = name
         self.geometry = geometry
         self.readout = readout
@@ -82,15 +80,14 @@ class CameraDescription:
             readout = CameraReadout.from_name(name)
         except FileNotFoundError:
             readout = None
-        return cls(noise=[0.0], name=name, geometry=geometry, readout=readout)
+        return cls(name=name, geometry=geometry, readout=readout)
 
     def __str__(self):
         return f"{self.name}"
 
     def __repr__(self):
-        return "{}(noise={}, name={}, geometry={}, readout={})".format(
+        return "{}(name={}, geometry={}, readout={})".format(
             self.__class__.__name__,
-            self.noise,
             self.name,
             str(self.geometry),
             str(self.readout),

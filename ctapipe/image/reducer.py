@@ -324,8 +324,6 @@ class TimeDataVolumeReducer(DataVolumeReducer):
         extractor = self.image_extractors[self.image_extractor_type.tel[tel_id]]
         # do not treat broken pixels in data volume reduction
         broken_pixels = np.zeros(camera_geom.n_pixels, dtype=bool)
-        noise = np.array(self.subarray.tel[tel_id].camera.noise).copy()
-        noise[broken_pixels] = 10000000
         dl1: DL1CameraContainer = extractor(
             waveforms,
             tel_id=tel_id,
@@ -333,16 +331,13 @@ class TimeDataVolumeReducer(DataVolumeReducer):
             broken_pixels=broken_pixels,
         )
 
-        mask = self.cleaner(tel_id, dl1.image / noise, dl1.peak_time)
+        mask = self.cleaner(tel_id, dl1.image, dl1.peak_time)
 
         if (self.do_boundary_dilation.tel[tel_id]) & (any(mask)):
             for i in range(0, 2):
                 mask = (
                     (dilate(camera_geom, mask))
-                    & (
-                        dl1.image / noise
-                        > self.pixels_above_boundary_thresh.tel[tel_id]
-                    )
+                    & (dl1.image > self.pixels_above_boundary_thresh.tel[tel_id])
                 ) | mask
 
         for _ in range(self.n_end_dilates.tel[tel_id]):

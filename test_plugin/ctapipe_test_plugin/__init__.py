@@ -44,7 +44,6 @@ step = 0.1
 t = np.arange(0, 40, step)
 geometry = CameraGeometry.make_rectangular()
 camera = CameraDescription(
-    noise=[],
     name="plugin",
     geometry=geometry,
     readout=CameraReadout(
