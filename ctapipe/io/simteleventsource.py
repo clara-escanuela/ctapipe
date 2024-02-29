@@ -964,8 +964,7 @@ class SimTelEventSource(EventSource):
             noises.append(noise)
             telescopes.append(tel)
 
-        print(len(noises))
-        print(len(telescopes))
+        print(noises[0])
         return telescopes, noises
 
     def _get_r1_pixel_status(self, tel_id, selected_gain_channel):
