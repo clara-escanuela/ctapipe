@@ -15,6 +15,9 @@ from astropy.time import Time
 from eventio.file_types import is_eventio
 from eventio.simtel.simtelfile import SimTelFile
 
+from ctapipe.calib.camera.gainselection import ThresholdGainSelector
+from ctapipe.image.extractor import deconvolve
+
 from ..atmosphere import (
     AtmosphereDensityProfile,
     FiveLayerAtmosphereDensityProfile,
@@ -146,7 +149,7 @@ def _location_from_meta(global_meta):
     )
 
 
-def build_camera(simtel_telescope, telescope, frame):
+def build_camera(noise, simtel_telescope, telescope, frame):
     """Create CameraDescription from eventio data structures"""
     camera_settings = simtel_telescope["camera_settings"]
     pixel_settings = simtel_telescope["pixel_settings"]
@@ -188,6 +191,7 @@ def build_camera(simtel_telescope, telescope, frame):
     )
 
     return CameraDescription(
+        noise=noise,
         name=telescope.camera_name,
         geometry=geometry,
         readout=readout,
@@ -515,6 +519,15 @@ class SimTelEventSource(EventSource):
             skip_calibration=self.skip_calibration_events,
             zcat=not self.back_seekable,
         )
+
+        try:
+            self.event_iter = iter(self.file_)
+            self.first_event = next(self.event_iter)
+        except (
+            StopIteration
+        ):  # Telescopes with no events will raise an error. This is not a nice solution.
+            pass
+
         if self.back_seekable and self.is_stream:
             raise IOError("back seekable was required but not possible for inputfile")
         (
@@ -581,14 +594,12 @@ class SimTelEventSource(EventSource):
         """
         Constructs a SubarrayDescription object from the
         ``telescope_descriptions`` given by ``SimTelFile``
-
         Parameters
         ----------
         telescope_descriptions: dict
             telescope descriptions as given by ``SimTelFile.telescope_descriptions``
         header: dict
             header as returned by ``SimTelFile.header``
-
         Returns
         -------
         SubarrayDescription :
@@ -599,11 +610,15 @@ class SimTelEventSource(EventSource):
         tel_positions = {}  # tel_id : TelescopeDescription
 
         self.telescope_indices_original = {}
-
+        i = 0
+        n_tels_ = len(telescope_descriptions.keys())
         for tel_id, telescope_description in telescope_descriptions.items():
             cam_settings = telescope_description["camera_settings"]
 
             n_pixels = cam_settings["n_pixels"]
+            if i == 0:
+                tels, noises = self._get_noise(n_pixels, n_tels_)
+            i += 1
             mirror_area = u.Quantity(cam_settings["mirror_area"], u.m**2)
 
             equivalent_focal_length = u.Quantity(cam_settings["focal_length"], u.m)
@@ -663,6 +678,7 @@ class SimTelEventSource(EventSource):
                 )
 
             camera = build_camera(
+                np.array(noises, dtype=object)[np.array(tels) == tel_id][0],
                 telescope_description,
                 telescope,
                 frame=CameraFrame(focal_length=focal_length),
@@ -679,16 +695,11 @@ class SimTelEventSource(EventSource):
             tel_positions[tel_id] = header["tel_pos"][tel_idx] * u.m
 
         name = self.file_.global_meta.get(b"ARRAY_CONFIG_NAME", b"MonteCarloArray")
-
-        reference_location = _location_from_meta(self.file_.global_meta)
-        if reference_location is None:
-            reference_location = self._make_dummy_location()
-
         subarray = SubarrayDescription(
             name=name.decode(),
             tel_positions=tel_positions,
             tel_descriptions=tel_descriptions,
-            reference_location=reference_location,
+            reference_location=_location_from_meta(self.file_.global_meta),
         )
 
         self.n_telescopes_original = len(subarray)
@@ -742,7 +753,18 @@ class SimTelEventSource(EventSource):
         # for events without event_id, we use negative event_ids
         pseudo_event_id = 0
 
-        for counter, array_event in enumerate(self.file_):
+        file__ = SimTelFile(
+            self.input_url.expanduser(),
+            allowed_telescopes=self.allowed_tels,
+            skip_calibration=self.skip_calibration_events,
+            zcat=not self.back_seekable,
+        )
+
+        # for counter, array_event in enumerate(
+        #    chain((self.first_event,), self.event_iter)
+        # ):
+        #    print(counter)
+        for counter, array_event in enumerate(file__):
             event_id = array_event.get("event_id", 0)
             if event_id == 0:
                 pseudo_event_id -= 1
@@ -865,6 +887,86 @@ class SimTelEventSource(EventSource):
                 dl1_calib.time_shift = time_calib[selected_gain_channel, pix_index]
 
             yield data
+
+    def _get_noise(self, n_pixels, n_tels):
+        pseudo_event_id = 0
+
+        tel_ids = []
+        a = np.array([[0.0] * n_pixels] * n_tels)
+        b = np.array([[0.0] * n_pixels] * n_tels)
+        len_a = np.array([0] * n_tels)
+        for counter, array_event in enumerate(self.file_):
+
+            event_id = array_event.get("event_id", 0)
+            if event_id == 0:
+                pseudo_event_id -= 1
+                event_id = pseudo_event_id
+
+            obs_id = self.file_.header["run"]
+
+            trigger = self._fill_trigger_info(array_event)
+
+            if trigger.event_type == EventType.SUBARRAY:
+                shower = self._fill_simulated_event_information(array_event)
+            else:
+                shower = None
+
+            data = ArrayEventContainer(
+                simulation=SimulatedEventContainer(shower=shower),
+                pointing=self._fill_array_pointing(),
+                index=EventIndexContainer(obs_id=obs_id, event_id=event_id),
+                count=counter,
+                trigger=trigger,
+            )
+            data.meta["origin"] = "hessio"
+            data.meta["input_url"] = self.input_url
+            data.meta["max_events"] = self.max_events
+
+            telescope_events = array_event["telescope_events"]
+
+            for tel_id, telescope_event in telescope_events.items():
+                adc_samples = telescope_event.get("adc_samples")
+                if adc_samples is None:
+                    adc_samples = telescope_event["adc_sums"][:, :, np.newaxis]
+
+                cam_mon = array_event["camera_monitorings"][tel_id]
+                pedestal = cam_mon["pedestal"] / cam_mon["n_ped_slices"]
+                dc_to_pe = array_event["laser_calibrations"][tel_id]["calib"]
+
+                gain_selector = ThresholdGainSelector()
+                r1_waveform, selected_gain_channel = apply_simtel_r1_calibration(
+                    adc_samples,
+                    pedestal,
+                    dc_to_pe,
+                    gain_selector,
+                    1.0,
+                    0.0,
+                )
+
+                if np.shape(r1_waveform)[0] == 1764:
+                    diff_traces = deconvolve(r1_waveform, 0.0, 4, 0.7)
+
+                a[tel_id - 1] = (
+                    a[tel_id - 1] + np.sum(np.array(diff_traces[:, 1:8]), axis=-1) ** 2
+                )
+                b[tel_id - 1] = b[tel_id - 1] + np.sum(
+                    np.array(diff_traces[:, 1:8]), axis=-1
+                )
+                len_a[tel_id - 1] = len_a[tel_id - 1] + 1
+                tel_ids.append(tel_id)
+
+        noises = []
+        telescopes = []
+        for tel in np.unique(tel_ids):
+            ai = a[tel - 1]
+            bi = b[tel - 1]
+            noise = np.sqrt(ai / len_a[tel - 1] - bi**2 / len_a[tel - 1] ** 2)
+            noises.append(noise)
+            telescopes.append(tel)
+
+        print(len(noises))
+        print(len(telescopes))
+        return telescopes, noises
 
     def _get_r1_pixel_status(self, tel_id, selected_gain_channel):
         tel_desc = self.file_.telescope_descriptions[tel_id]
