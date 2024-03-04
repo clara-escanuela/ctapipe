@@ -23,12 +23,13 @@ __all__ = [
     "time_constrained_clean",
     "ImageCleaner",
     "TailcutsImageCleaner",
-    "TimeImageCleaner2"
+    "TimeImageCleaner2",
 ]
 
 from abc import abstractmethod
-from sklearn.cluster import DBSCAN
+
 import numpy as np
+from sklearn.cluster import DBSCAN
 
 from ..core import TelescopeComponent
 from ..core.traits import (
@@ -112,6 +113,7 @@ def tailcuts_clean(
             pixels_in_picture & pixels_with_boundary_neighbors
         )
 
+
 def time_clustering2(
     geom,
     image,
@@ -135,7 +137,7 @@ def time_clustering2(
         mask = np.zeros(len(time)) != 0
     else:
         X = np.column_stack((time[precut_mask] / time_scale_ns, pix_x, pix_y))
-        labels = DBSCAN(eps=eps, min_samples=minpts).fit_predict(X, sample_weight=1 / (1 + np.exp(-(image[precut_mask] + 2.0) / 4.0)))
+        labels = DBSCAN(eps=eps, min_samples=minpts).fit_predict(X)
 
         y = np.array(arr[(arr == 0)])
         y[(labels == -1)] = -1
@@ -144,11 +146,9 @@ def time_clustering2(
 
     high_charge = 6
     neighs = 1
-    number_of_neighbors = geom.neighbor_matrix_sparse.dot(
-        (image >= high_charge)
-    )
+    number_of_neighbors = geom.neighbor_matrix_sparse.dot((image >= high_charge))
 
-    mask = mask | ((image >= high_charge) & (number_of_neighbors>=neighs))
+    mask = mask | ((image >= high_charge) & (number_of_neighbors >= neighs))
 
     return mask
 
@@ -281,6 +281,7 @@ def apply_time_delta_cleaning(
     enough_neighbors = np.count_nonzero(valid_neighbors, axis=1) >= min_number_neighbors
     pixels_to_keep[pixels_to_keep] &= enough_neighbors
     return pixels_to_keep
+
 
 def apply_time_average_cleaning(
     geom, mask, image, arrival_times, picture_thresh, time_limit
@@ -572,6 +573,7 @@ class TailcutsImageCleaner(ImageCleaner):
             keep_isolated_pixels=self.keep_isolated_pixels.tel[tel_id],
         )
 
+
 class TimeImageCleaner2(ImageCleaner):
     """
     Clean images using the time clustering cleaning method
@@ -607,6 +609,7 @@ class TimeImageCleaner2(ImageCleaner):
             minpts=self.minpts.tel[tel_id],
             hard_cut_pe=self.hard_cut_pe.tel[tel_id],
         )
+
 
 class MARSImageCleaner(TailcutsImageCleaner):
     """
