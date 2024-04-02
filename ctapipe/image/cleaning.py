@@ -124,6 +124,7 @@ def time_clustering2(
     space_scale_m=0.125,
     hard_cut_pe=4,
     n_dilate=True,
+    image_scale_pe=2,
 ):
 
     precut_mask = image > hard_cut_pe
@@ -144,7 +145,7 @@ def time_clustering2(
         arr[arr == 0] = y
         mask = arr == 0  # we keep these events
 
-    high_charge = 6
+    high_charge = image_scale_pe
     neighs = 1
     number_of_neighbors = geom.neighbor_matrix_sparse.dot((image >= high_charge))
 
@@ -594,6 +595,9 @@ class TimeImageCleaner2(ImageCleaner):
     hard_cut_pe = FloatTelescopeParameter(
         default_value=2.5, help="Hard cut in the number of pe"
     ).tag(config=True)
+    image_scale_pe = FloatTelescopeParameter(
+        default_value=2.0, help="Hard cut in the number of pe"
+    ).tag(config=True)
 
     def __call__(
         self, tel_id: int, image: np.ndarray, arrival_times=None
@@ -608,6 +612,7 @@ class TimeImageCleaner2(ImageCleaner):
             time_scale_ns=self.time_scale_ns.tel[tel_id],
             minpts=self.minpts.tel[tel_id],
             hard_cut_pe=self.hard_cut_pe.tel[tel_id],
+            image_scale_pe=self.image_scale_pe.tel[tel_id],
         )
 
 
