@@ -183,8 +183,15 @@ class CameraCalibrator(TelescopeComponent):
         if self._check_r1_empty(r1.waveform):
             return
 
+        n_pixels = len(r1.waveform)
+        broken_pixels = _get_invalid_pixels(
+            n_pixels,
+            event.mon.tel[tel_id].pixel_status,
+            r1.selected_gain_channel,
+        )
         signal_pixels = self.data_volume_reducer(
             r1.waveform,
+            broken_pixels,
             tel_id=tel_id,
             selected_gain_channel=r1.selected_gain_channel,
         )
