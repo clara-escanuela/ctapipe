@@ -356,3 +356,5 @@ class TimeDataVolumeReducer(DataVolumeReducer):
 
         for _ in range(self.n_end_dilates.tel[tel_id]):
             mask = dilate(camera_geom, mask)
+
+        return mask
