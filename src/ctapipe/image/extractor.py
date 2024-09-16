@@ -1575,7 +1575,9 @@ def nonlinear_pars(waveforms, upsampling, heigh_lim):
     d_wv = deconvolve(waveforms, 0.0, upsampling, 1)
     dwidth = np.argmin(t_waveforms, axis=-1) - np.argmax(t_waveforms, axis=-1)
 
-    return darea, dwidth
+    grmax = np.max(waveforms, axis=-1)
+
+    return darea, dwidth, grmax
     
 
 class FlashCamExtractor(ImageExtractor):
