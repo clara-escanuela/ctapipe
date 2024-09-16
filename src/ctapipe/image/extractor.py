@@ -1564,6 +1564,19 @@ def adaptive_centroid(waveforms, peak_index, rel_descend_limit, centroids):
     if sum_ != 0.0:
         centroids[0] = jsum / sum_
 
+def nonlinear_pars(waveforms, upsampling, heigh_lim):
+    filt = np.ones(upsampling)
+    filt_weighted = filt / upsampling
+    signal = np.repeat(waveforms, upsampling, axis=-1)
+    u_wv = __filtfilt_fast(signal, filt_weighted)  #upsampled waveform
+
+    darea = np.sum(u_wv, axis=-1, where=(u_wv > heigh_lim))
+    
+    d_wv = deconvolve(waveforms, 0.0, upsampling, 1)
+    dwidth = np.argmin(t_waveforms, axis=-1) - np.argmax(t_waveforms, axis=-1)
+
+    return darea, dwidth
+    
 
 class FlashCamExtractor(ImageExtractor):
     """
