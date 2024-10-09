@@ -1578,8 +1578,16 @@ def nonlinear_pars(waveforms, upsampling, heigh_lim):
     grmax = np.max(waveforms, axis=-1)
 
     return darea, dwidth, grmax
-    
 
+def transition_regime(dwidth, A, B):
+    charge = A*dwidth + B
+    return charge
+
+def transition_fit(dwidth, true_charge):
+    coef = np.polyfit(x,y,1)
+    poly1d_fn = np.poly1d(coef)
+    return coef[0], coef[1]
+    
 class FlashCamExtractor(ImageExtractor):
     """
     Image extractor applying signal preprocessing for FlashCam
