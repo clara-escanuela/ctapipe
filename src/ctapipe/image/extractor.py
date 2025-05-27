@@ -1480,9 +1480,13 @@ def deconvolve(
         Deconvolved and upsampled waveforms stored in a numpy array.
         Shape: (n_channels, n_pix, upsampling * n_samples)
     """
-    deconvolved_waveforms = np.atleast_2d(waveforms) - np.atleast_2d(baselines).T
-    deconvolved_waveforms[..., 1:] -= pole_zero * deconvolved_waveforms[..., :-1]
-    deconvolved_waveforms[..., 0] = 0
+    if pole_zero > 0:
+        deconvolved_waveforms = np.atleast_2d(waveforms) - np.atleast_2d(baselines).T
+        deconvolved_waveforms[..., 1:] -= pole_zero * deconvolved_waveforms[..., :-1]
+        deconvolved_waveforms[..., 0] = 0
+
+    else:
+        deconvolved_waveforms = np.atleast_2d(waveforms) - np.atleast_2d(baselines).T
 
     if upsampling > 1:
         filt = np.ones(upsampling)
@@ -1563,6 +1567,45 @@ def adaptive_centroid(waveforms, peak_index, rel_descend_limit, centroids):
 
     if sum_ != 0.0:
         centroids[0] = jsum / sum_
+
+
+@guvectorize(
+    [
+        (float64[:], float64[:], int64, float64[:], float64[:], float32[:], float32[:]),
+        (float32[:], float32[:], int64, float32[:], float32[:], float32[:], float32[:]),
+    ],
+    "(s),(),(),(),()->(),()",
+    nopython=True,
+    cache=True,
+)
+def saturation(
+    waveforms, rising_edges, window, start_umax, stop_umax, partial_sum, umax
+):
+    n_samples = waveforms.size
+    if n_samples == 0:
+        return 0.0
+
+    if (rising_edges > (n_samples - 1)) or (rising_edges < 0):
+        raise ValueError("peak_index must be within the waveform limits")
+
+    sum_ = 0.0
+
+    if rising_edges > 10:
+        j = rising_edges - 10  # peak_index
+    else:
+        j = 0
+
+    if (j + window) >= n_samples:
+        upper_window = n_samples
+    else:
+        upper_window = j + window
+
+    while j < upper_window:
+        sum_ += np.array(waveforms)[j]
+        j += 1
+
+    partial_sum[0] = sum_
+    umax[0] = np.max(waveforms[int(np.round(start_umax)) : int(np.round(stop_umax))])
 
 
 class FlashCamExtractor(ImageExtractor):
@@ -1699,9 +1742,8 @@ class FlashCamExtractor(ImageExtractor):
             self.sampling_rate_ghz[tel_id] * upsampling,
         )
 
+        d_waveforms = deconvolve(waveforms, 0.0, upsampling, 1)
         if leading_edge_timing:
-            d_waveforms = deconvolve(waveforms, 0.0, upsampling, 1)
-
             # correct the offset between leading edge peak and deconvolved peak
             peak_index = np.round(peak_index - pz2d).astype(int)
             n_samples = d_waveforms.shape[-1]
