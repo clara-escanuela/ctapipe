@@ -46,26 +46,28 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
         dtraces = deconvolve(s, 0.0, 1, 1.0)
 
     geometry = subarray.tel[tel_id].camera.geometry
-    
-    n_channels, n_pixels, _ = dtraces[broken_pixels].shape
+
+    n_pixels, _ = dtraces[broken_pixels].shape
+    pixels = np.where(broken_pixels)[0]
     neighbors = subarray.tel[tel_id].camera.geometry.neighbor_matrix_sparse
     indptr = neighbors.indptr
     indices = neighbors.indices
-    
-    for pixel in prange(n_pixels):
+
+    for pixel in pixels:
         average = 0
         neighbors = indices[indptr[pixel] : indptr[pixel + 1]]
 
+        i = 0
         for neighbor in neighbors:
             if broken_pixels[neighbor]:
                 continue
             average += dtraces[neighbor]
+            i += 1
 
-        dtraces[pixel] = average
-   
+        dtraces[pixel] = average / i
 
-    noise = np.array(subarray.tel[tel_id].camera.noise)[~broken_pixels]
-    geometry = subarray.tel[tel_id].camera.geometry[~broken_pixels]
+    noise = np.array(subarray.tel[tel_id].camera.noise) #[~broken_pixels]
+    geometry = subarray.tel[tel_id].camera.geometry #[~broken_pixels]
 
     arr_ones = np.ones(len(dtraces[0]))
 
@@ -81,6 +83,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
     pix_no = np.array([])
     snr = np.array([])
     all_snr = []
+
     for i in range(len(dtraces)):
         ctrace = dtraces[i]
         local_max_pos = find_peaks(ctrace, height=0.2 * np.max(ctrace))[0]
@@ -89,26 +92,24 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
             (np.array(integral) > cut * noise[i]) & (np.array(integral) > hard_cut)
         ]
 
-        if i not in np.where(broken_pixels == True)[0]:
-            x = np.append(x, x_pos[i][pos])
-            y = np.append(y, y_pos[i][pos])
-            pix_no = np.append(pix_no, pix_id[i][pos])
-            time = np.append(time, pos)
+        #if i not in np.where(broken_pixels == True)[0]:
+        x = np.append(x, x_pos[i][pos])
+        y = np.append(y, y_pos[i][pos])
+        pix_no = np.append(pix_no, pix_id[i][pos])
+        time = np.append(time, pos)
 
-            snr = np.append(
-                snr,
-                list(
-                    np.array(integral)[
-                        (np.array(integral) > cut * noise[i])
-                        & (np.array(integral) > hard_cut)
-                    ]
-                    / noise[i]
-                ),
-            )
+        snr = np.append(
+            snr,
+            list(
+                np.array(integral)[
+                    (np.array(integral) > cut * noise[i])
+                    & (np.array(integral) > hard_cut)
+                ]
+                / noise[i]
+            ),
+        )
 
-            all_snr.append(np.max(np.array(integral), initial=0) / noise[i])
-        else:
-            all_snr.append(0)
+        all_snr.append(np.max(np.array(integral), initial=0) / noise[i])
 
     return (
         np.array(time),
@@ -118,6 +119,7 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
         np.array(snr),
         np.array(all_snr),
     )
+
 
 
 PIXEL_SPACING = {
