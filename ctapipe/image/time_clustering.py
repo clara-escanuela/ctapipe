@@ -39,13 +39,30 @@ def get_cluster(subarray, broken_pixels, tel_id, traces, cut):
 
     """
     if subarray.tel[tel_id].camera_name == "FlashCam":
-        dtraces = deconvolve(traces, 0.0, 4, 1.0)[
-            ~broken_pixels
-        ]  # Trace differentiation
+        dtraces = deconvolve(traces, 0.0, 4, 1.0)  # Trace differentiation
     else:
         b, a = signal.butter(8, 0.2)
         s = signal.filtfilt(b, a, traces, method="gust")
-        dtraces = deconvolve(s, 0.0, 1, 1.0)[~broken_pixels]
+        dtraces = deconvolve(s, 0.0, 1, 1.0)
+
+    geometry = subarray.tel[tel_id].camera.geometry
+    
+    n_channels, n_pixels, _ = dtraces[broken_pixels].shape
+    neighbors = subarray.tel[tel_id].camera.geometry.neighbor_matrix_sparse
+    indptr = neighbors.indptr
+    indices = neighbors.indices
+    
+    for pixel in prange(n_pixels):
+        average = 0
+        neighbors = indices[indptr[pixel] : indptr[pixel + 1]]
+
+        for neighbor in neighbors:
+            if broken_pixels[neighbor]:
+                continue
+            average += dtraces[neighbor]
+
+        dtraces[pixel] = average
+   
 
     noise = np.array(subarray.tel[tel_id].camera.noise)[~broken_pixels]
     geometry = subarray.tel[tel_id].camera.geometry[~broken_pixels]
