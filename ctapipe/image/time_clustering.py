@@ -153,7 +153,7 @@ def time_clustering(
 
     geom = subarray.tel[tel_id].camera.geometry
     all_snrs = np.zeros(geom.n_pixels, dtype=float)
-    all_snrs[~broken_pixels] = all_snr
+    all_snrs = all_snr
 
     arr = np.zeros(len(time), dtype=float)
     pix_arr = -np.ones(geom.n_pixels, dtype=int)
