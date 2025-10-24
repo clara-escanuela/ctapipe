@@ -161,7 +161,7 @@ def time_clustering(
     pix_x = x / (d_scale)
     pix_y = y / (d_scale)
 
-    X = np.column_stack((time / t_scale, pix_x, pix_y, 1 / snrs))
+    X = np.column_stack((time / t_scale, pix_x, pix_y))
 
     if weight == True:
         db = DBSCAN(eps=dd, min_samples=n_min).fit(
