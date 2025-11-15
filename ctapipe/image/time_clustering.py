@@ -180,26 +180,13 @@ def time_clustering(
 
     mask = pix_arr == 0  # we keep these events
 
-    if neighbours:
-        pixels_above_boundary_thresh = all_snrs >= 5
-        pixels_above_picture_thresh = all_snrs >= 10
 
-        mask_in_loop = np.array([])
-        for i in range(4):
-            # while (not np.array_equal(mask, mask_in_loop) and ):
-            mask_in_loop = mask
-            pixels_with_boundary_neighbors = geom.neighbor_matrix_sparse.dot(mask)
-            pixels_with_picture_neighbors = geom.neighbor_matrix_sparse.dot(
-                pixels_above_picture_thresh
-            )
-            mask = mask | (
-                pixels_above_boundary_thresh
-                & (pixels_with_picture_neighbors | pixels_with_boundary_neighbors)
-            )
+    high_charge = 10
+    neighs = 1
+    number_of_neighbors = geom.neighbor_matrix_sparse.dot((all_snrs >= high_charge))
 
-            if np.array_equal(mask, mask_in_loop):
-                break
-
+    mask = mask | ((all_snrs >= high_charge) & (number_of_neighbors >= neighs))
+    
     for _ in range(int(rows)):
         mask = dilate(geom, mask)
 
