@@ -135,6 +135,7 @@ def time_clustering(
     tel_id,
     r0_waveform,
     broken_pixels,
+    hq=8,
     cut=3.5,
     n_min=5,
     dd=1.0,
@@ -181,7 +182,7 @@ def time_clustering(
     mask = pix_arr == 0  # we keep these events
 
 
-    high_charge = 10
+    high_charge = hq
     neighs = 1
     number_of_neighbors = geom.neighbor_matrix_sparse.dot((all_snrs >= high_charge))
 
@@ -273,6 +274,11 @@ class TimeCleaner(WaveformCleaner):
         help="Scale for weighting",
     ).tag(config=True)
 
+    hq = FloatTelescopeParameter(
+        default_value=8.0,
+        help="Scale for weighting",
+    ).tag(config=True)
+
     weight = BoolTelescopeParameter(
         default_value=False,
         help="If set to 'False', the iteration steps in 2) are skipped and"
@@ -296,6 +302,7 @@ class TimeCleaner(WaveformCleaner):
             tel_id,
             waveform,
             broken_pixels,
+            hq=self.hq.tel[tel_id],
             cut=self.cut.tel[tel_id],
             n_min=self.n_min.tel[tel_id],
             dd=self.dd.tel[tel_id],
